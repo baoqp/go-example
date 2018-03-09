@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/chrislusf/seaweedfs/weed/security"
+	"net"
 )
 
 var (
@@ -182,4 +183,18 @@ func NormalizeUrl(url string) string {
 		return url
 	}
 	return "http://" + url
+}
+
+func GetActualRemoteHost(r *http.Request) (host string, err error) {
+	host = r.Header.Get("HTTP_X_FORWARDED_FOR")
+	if host == "" {
+		host = r.Header.Get("X-FORWARDED-FOR")
+	}
+	if strings.Contains(host, ",") {
+		host = host[0:strings.Index(host, ",")]
+	}
+	if host == "" {
+		host, _, err = net.SplitHostPort(r.RemoteAddr)
+	}
+	return
 }

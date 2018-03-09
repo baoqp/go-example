@@ -42,7 +42,8 @@ func NewRaftServer(r *mux.Router, peers []string, httpAddr string, dataDir strin
 		kvServer: kvServer,
 	}
 
-	//raft.RegisterCommand(&topology.MaxVolumeIdCommand{})
+	// 别忘了注册命令
+	raft.RegisterCommand(&OPCommand{})
 
 	var err error
 	transporter := raft.NewHTTPTransporter("/cluster", 0)
@@ -71,6 +72,7 @@ func NewRaftServer(r *mux.Router, peers []string, httpAddr string, dataDir strin
 			firstJoinError := s.Join(s.peers)
 			if firstJoinError != nil {
 				fmt.Printf("No existing server found. Starting as leader in the new cluster.")
+				fmt.Printf(" Current leader is %s", s.raftServer.Leader())
 				_, err := s.raftServer.Do(&raft.DefaultJoinCommand{
 					Name:             s.raftServer.Name(),
 					ConnectionString: "http://" + s.httpAddr,

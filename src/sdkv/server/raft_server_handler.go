@@ -5,7 +5,6 @@ import (
 	"strings"
 	"net/http"
 	"github.com/chrislusf/raft"
-	"github.com/chrislusf/seaweedfs/weed/operation"
 	"io/ioutil"
 	"fmt"
 
@@ -40,7 +39,6 @@ func (raftServer *RaftServer) joinHandler(w http.ResponseWriter, req *http.Reque
 	}
 }
 
-
 func (raftServer *RaftServer) redirectToLeader(w http.ResponseWriter, req *http.Request) {
 
 	if leader, e := raftServer.kvServer.Leader(); e == nil {
@@ -55,7 +53,7 @@ func (raftServer *RaftServer) redirectToLeader(w http.ResponseWriter, req *http.
 }
 
 func (raftServer *RaftServer) statusHandler(w http.ResponseWriter, r *http.Request) {
-	ret := operation.ClusterStatusResult{
+	ret := ClusterStatusResult{
 		IsLeader: raftServer.kvServer.IsLeader(),
 		Peers:    raftServer.Peers(),
 	}
@@ -63,4 +61,10 @@ func (raftServer *RaftServer) statusHandler(w http.ResponseWriter, r *http.Reque
 		ret.Leader = leader
 	}
 	util.WriteJsonQuiet(w, r, http.StatusOK, ret)
+}
+
+type ClusterStatusResult struct {
+	IsLeader bool     `json:"IsLeader,omitempty"`
+	Leader   string   `json:"Leader,omitempty"`
+	Peers    []string `json:"Peers,omitempty"`
 }

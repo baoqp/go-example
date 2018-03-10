@@ -27,9 +27,6 @@ type Task struct {
 	expectedTerm uint64
 }
 
-type Iterator struct {
-}
-
 
 
 // This class encapsulates the parameter of on_start_following and on_stop_following interfaces.

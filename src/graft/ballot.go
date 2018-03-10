@@ -12,6 +12,34 @@ type UnfoundPeerId struct {
 
 // 投票
 type Ballot struct {
-	peers    []UnfoundPeerId
-	oldPeers []UnfoundPeerId
+	peers     []UnfoundPeerId
+	quorum    int
+	oldPeers  []UnfoundPeerId
+	oldQuorum int
+}
+
+// TODO
+func (ballot *Ballot) init(conf *Configuration, oldConf *Configuration) {
+
+}
+
+// TODO
+func (ballot *Ballot) grant(peer *PeerId, hint PosHint) PosHint {
+	return PosHint{}
+}
+
+// TODO
+func (ballot *Ballot) grant(peer *PeerId) {
+
+}
+
+
+func (ballot *Ballot) granted() bool {
+	return ballot.quorum<=0 && ballot.oldQuorum<=0
+}
+
+
+
+type BallotBox struct {
+
 }

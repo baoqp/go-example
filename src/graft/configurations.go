@@ -33,7 +33,10 @@ type NodeId struct {
 
 
 type Configuration struct {
+	peers []PeerId
+}
 
-	// set<PeerId> _peers
+func reset(this *Configuration) {
+
 }
 

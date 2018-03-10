@@ -1,5 +1,7 @@
 package graft
 
+import "sync"
+
 type Node interface {
 	nodeId() NodeId
 
@@ -87,14 +89,6 @@ type ConfigurationCtx struct {
 	done        *Closure
 }
 
-type LopEntry struct {
-}
-
-type LogId struct {
-	index uint64
-	term  uint64
-}
-
 type LogEntryAndClosure struct {
 	typ      EntryType
 	id       LogId
@@ -103,6 +97,17 @@ type LogEntryAndClosure struct {
 	data     []byte
 }
 
+type StopTransferArg struct {
+
+}
+
+
+
+
+
+
+
+
 // 实现Node接口
 type NodeImpl struct {
 	state               State
@@ -110,5 +115,31 @@ type NodeImpl struct {
 	lastLeaderTimeStamp uint64
 	leaderId            PeerId
 	votedId             PeerId
+	voteCtx             Ballot
+	preVoteCtx          Ballot
+	conf                ConfigurationEntry
 
+	groupId  GroupId
+	serverId PeerId
+	options  NodeOptions
+
+	mutex                 sync.Mutex
+	confCtx               ConfigurationCtx
+	LogStorage            *LogStorage
+	metaStorage           *RaftMetaStorage
+	closureQueue          *ClosureQueue
+	configManager         *ConfigurationManager
+	logManager            *LogManager
+	fsmCaller             *FSMCaller
+	ballotBox             *BallotBox
+	replicatorGroup       *ReplicatorGroup
+	shutdownContinuations []Closure
+	// electionTimer
+	// voteTimer
+	// stepdownTimer
+
+	wakingCandidate ReplicaId
+
+	//bthread::ExecutionQueueId<LogEntryAndClosure> _apply_queue_id;
+	//bthread::ExecutionQueue<LogEntryAndClosure>::scoped_ptr_t _apply_queue;
 }

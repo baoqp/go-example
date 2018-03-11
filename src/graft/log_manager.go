@@ -7,6 +7,8 @@ type LogManagerOptions struct {
 }
 
 
+
+
 type StableClosure struct {
 	firstLogIndex uint64
 }
@@ -38,6 +40,12 @@ type WaitId uint64
 type LogManager struct {
 
 }
+
+// TODO
+func (this *LogManager) init(options *LogManagerOptions) bool{
+	return false
+}
+
 
 // TODO
 func (this *LogManager) shutdown() {

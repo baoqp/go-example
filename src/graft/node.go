@@ -119,7 +119,7 @@ type NodeImpl struct {
 
 	mutex                 sync.Mutex
 	confCtx               ConfigurationCtx
-	LogStorage            *LogStorage
+	logStorage            *LogStorage
 	metaStorage           *RaftMetaStorage
 	closureQueue          *ClosureQueue
 	configManager         *ConfigurationManager
@@ -149,17 +149,21 @@ func (this *NodeImpl) bootstrap(options *BootstrapOptions) {
 
 	bootstrapId := &LogId{index: options.lastLogIndex, term: bootstrapLogTerm}
 
-	configManager := &ConfigurationManager{}
+	this.configManager = &ConfigurationManager{}
 
-	fsmCaller := &FSMCaller{}
+	this.fsmCaller = &FSMCaller{}
 
 	this.initLogStorage()
 
 }
 func (this *NodeImpl) initLogStorage() {
-	logStorage := CreateLogStorage(this.options.logUri)
+	this.logStorage = CreateLogStorage(this.options.logUri)
 	this.logManager = &LogManager{}
 
-
-
+	logManagerOptions := &LogManagerOptions{}
+	logManagerOptions.logStorage = this.logStorage
+	logManagerOptions.configurationManager = this.configManager
+	logManagerOptions.fsmCaller = this.fsmCaller
+	this.logManager.init(logManagerOptions)
+	return false
 }

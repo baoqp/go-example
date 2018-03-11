@@ -2,6 +2,9 @@ package graft
 
 type NodeOptions struct {
 
+	*BootstrapOptions
+
+
 	electionTimeoutMS int
 
 	catchupMargin int

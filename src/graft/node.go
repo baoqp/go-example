@@ -1,6 +1,8 @@
 package graft
 
-import "sync"
+import (
+	"sync"
+)
 
 type Node interface {
 	nodeId() NodeId
@@ -98,15 +100,7 @@ type LogEntryAndClosure struct {
 }
 
 type StopTransferArg struct {
-
 }
-
-
-
-
-
-
-
 
 // 实现Node接口
 type NodeImpl struct {
@@ -142,4 +136,30 @@ type NodeImpl struct {
 
 	//bthread::ExecutionQueueId<LogEntryAndClosure> _apply_queue_id;
 	//bthread::ExecutionQueue<LogEntryAndClosure>::scoped_ptr_t _apply_queue;
+}
+
+func (this *NodeImpl) bootstrap(options *BootstrapOptions) {
+	if options.groupConf == nil {
+		panic("bootstraping an empty node makes no sense")
+	}
+
+	bootstrapLogTerm := 0 // TODO
+
+	this.bootstrap(options)
+
+	bootstrapId := &LogId{index: options.lastLogIndex, term: bootstrapLogTerm}
+
+	configManager := &ConfigurationManager{}
+
+	fsmCaller := &FSMCaller{}
+
+	this.initLogStorage()
+
+}
+func (this *NodeImpl) initLogStorage() {
+	logStorage := CreateLogStorage(this.options.logUri)
+	this.logManager = &LogManager{}
+
+
+
 }

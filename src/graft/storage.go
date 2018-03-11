@@ -49,10 +49,7 @@ func (this *LogStorage) reset(firstIndexKept uint64) uint64 {
 // TODO
 func CreateLogStorage(uri string) *LogStorage {
 
-	protocol, parameters := ParseUri(uri)
-
-
-	return &LogStorage{}
+	return nil
 }
 
 

@@ -83,7 +83,13 @@ type UserLog struct {
 
 
 
-
+type BootstrapOptions struct {
+	groupConf *Configuration
+	lastLogIndex uint64
+	fsm *StateMachine
+	nodeOwnsFSM bool
+	logUri string
+}
 
 
 

@@ -28,11 +28,6 @@ func (ballot *Ballot) grant(peer *PeerId, hint PosHint) PosHint {
 	return PosHint{}
 }
 
-// TODO
-func (ballot *Ballot) grant(peer *PeerId) {
-
-}
-
 
 func (ballot *Ballot) granted() bool {
 	return ballot.quorum<=0 && ballot.oldQuorum<=0

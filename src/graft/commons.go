@@ -1,10 +1,15 @@
 package graft
 
 import (
-	"math"
 	"math/rand"
 	"strings"
+	"fmt"
+	"os"
 )
+
+//---------------------------type definination-------------------------//
+type Stage int
+
 
 type Iterator struct {
 	data []interface{}
@@ -36,10 +41,7 @@ func Min(a int, b int) int {
 	return b
 }
 
-const(
-	raftElectionDelayMS = 100
-	raftElectionHeartbeatFactor = 10
-)
+
 
 func RandomTimeout(timeoutMS int) int {
 	delta := Min(timeoutMS, raftElectionDelayMS)
@@ -55,7 +57,7 @@ func HeartbeatTimeout(electionTimeout int) int {
 func ParseUri(uri string) (string, string){
 	pos := strings.IndexAny(uri, "://")
 	if pos == -1 {
-		return ""
+		return "", uri
 	}
 
 	protocol := strings.TrimSpace(uri[:pos])
@@ -64,3 +66,25 @@ func ParseUri(uri string) (string, string){
 }
 
 
+func Assert(condition bool, msg string, v ...interface{}) {
+	if !condition {
+		panic(fmt.Sprintf("assertion failed: " + msg, v...))
+	}
+}
+
+func CHECK(condition bool, msg string, v ...interface{}) {
+	Assert(condition, msg, v)
+}
+
+
+//--------------------------------文件相关操作----------------------------------//
+func PathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}

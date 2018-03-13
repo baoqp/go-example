@@ -26,7 +26,7 @@ type Node interface {
 	// About the ownership:
 	// |task.data|: for the performance consideration, we will take away the
 	//              content. If you want keep the content, copy it before call
-	//              this function
+	//              nodeImpl function
 	// |task.done|: If the data is successfully committed to the raft group. We
 	//              will pass the ownership to StateMachine::on_apply.
 	//              Otherwise we will specify the error and call it.
@@ -41,13 +41,13 @@ type Node interface {
 
 	changePeers(newPeers *Configuration, done *Closure)
 
-	// Reset the configuration of this node individually, without any repliation
-	// to other peers before this node beomes the leader. This function is
+	// Reset the configuration of nodeImpl node individually, without any repliation
+	// to other peers before nodeImpl node beomes the leader. nodeImpl function is
 	// supposed to be inovoked when the majority of the replication group are
 	// dead and you'd like to revive the service in the consideration of
 	// availability.
-	// Notice that neither consistency nor consensus are guaranteed in this
-	// case, BE CAREFULE when dealing with this method.
+	// Notice that neither consistency nor consensus are guaranteed in nodeImpl
+	// case, BE CAREFULE when dealing with nodeImpl method.
 	resetPeers(newPeers *Configuration)
 
 	resetElectionTimeOut(timeOutMS int)
@@ -67,24 +67,16 @@ type Node interface {
 	//     - return ENOMOREUSERLOG when we can't get a user log even reaching last_committed_index.
 	// [NOTE] in consideration of safety, we use last_applied_index instead of last_committed_index
 	// in code implementation.
-	readCommittedUserLog(index uint64, userLog *UserLog) Status
+	readCommittedUserLog(index int64, userLog *UserLog) Status
 }
 
-type Stage int
 
-// 节点状态
-const (
-	STAGE_NONE        Stage = iota
-	STAGE_CATCHING_UP
-	STAGE_JOINT
-	STAGE_STABLE
-)
 
 type ConfigurationCtx struct {
-	node        NodeImpl
+	node        *NodeImpl
 	stage       Stage
 	nchanges    int
-	version     uint64
+	version     int64
 	newPeers    []PeerId
 	oldPeers    []PeerId
 	addingPeers []PeerId
@@ -105,8 +97,8 @@ type StopTransferArg struct {
 // 实现Node接口
 type NodeImpl struct {
 	state               State
-	currentTerm         uint64
-	lastLeaderTimeStamp uint64
+	currentTerm         int64
+	lastLeaderTimeStamp int64
 	leaderId            PeerId
 	votedId             PeerId
 	voteCtx             Ballot
@@ -119,7 +111,7 @@ type NodeImpl struct {
 
 	mutex                 sync.Mutex
 	confCtx               ConfigurationCtx
-	logStorage            *LogStorage
+	logStorage            LogStorage
 	metaStorage           *RaftMetaStorage
 	closureQueue          *ClosureQueue
 	configManager         *ConfigurationManager
@@ -138,32 +130,46 @@ type NodeImpl struct {
 	//bthread::ExecutionQueue<LogEntryAndClosure>::scoped_ptr_t _apply_queue;
 }
 
-func (this *NodeImpl) bootstrap(options *BootstrapOptions) {
+func (nodeImpl *NodeImpl) bootstrap(options *BootstrapOptions) {
 	if options.groupConf == nil {
 		panic("bootstraping an empty node makes no sense")
 	}
 
-	bootstrapLogTerm := 0 // TODO
+	//bootstrapLogTerm := 0 // TODO
 
-	this.bootstrap(options)
+	nodeImpl.bootstrap(options)
 
-	bootstrapId := &LogId{index: options.lastLogIndex, term: bootstrapLogTerm}
+	//bootstrapId := &LogId{index: options.lastLogIndex, term: bootstrapLogTerm}
 
-	this.configManager = &ConfigurationManager{}
+	nodeImpl.configManager = &ConfigurationManager{}
 
-	this.fsmCaller = &FSMCaller{}
+	nodeImpl.fsmCaller = &FSMCaller{}
 
-	this.initLogStorage()
+	if !nodeImpl.initLogStorage() {
+		panic("Fail to init logStorage")
+	}
+
+
+	if !nodeImpl.initMetaStorage() {
+		panic("Fail to init metaStorage")
+	}
 
 }
-func (this *NodeImpl) initLogStorage() {
-	this.logStorage = CreateLogStorage(this.options.logUri)
-	this.logManager = &LogManager{}
+
+
+func (nodeImpl *NodeImpl) initLogStorage() bool {
+	nodeImpl.logStorage = NewMemoryLogStorage(nodeImpl.options.logUri)
+	nodeImpl.logManager = &LogManager{}
 
 	logManagerOptions := &LogManagerOptions{}
-	logManagerOptions.logStorage = this.logStorage
-	logManagerOptions.configurationManager = this.configManager
-	logManagerOptions.fsmCaller = this.fsmCaller
-	this.logManager.init(logManagerOptions)
+	logManagerOptions.logStorage = nodeImpl.logStorage
+	logManagerOptions.configurationManager = nodeImpl.configManager
+	logManagerOptions.fsmCaller = nodeImpl.fsmCaller
+	nodeImpl.logManager.init(logManagerOptions)
+	return false
+}
+
+// TODO
+func (nodeImpl *NodeImpl) initMetaStorage() bool {
 	return false
 }

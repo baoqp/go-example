@@ -1,65 +1,26 @@
 package graft
 
-type LogStorage struct {
-
-}
-
-// TODO
-func (this *LogStorage) FirstLogIndex() uint64 {
-	return 0
-}
-
-// TODO
-func (this *LogStorage) LastLogIndex() uint64 {
-	return 0
-}
-
-// TODO
-func (this *LogStorage) GetEntry(index uint64) *LogEntry {
-	return nil
-}
-
-// TODO
-func (this *LogStorage) GetTerm(index uint64) uint64 {
-	return 0
-}
-
-// TODO
-func (this *LogStorage) AppendEntry(index uint64) uint64 {
-	return 0
-}
-
-
-// TODO
-func (this *LogStorage) TruncatePrefix(firstIndexKept uint64) uint64 {
-	return 0
-}
-
-
-// TODO
-func (this *LogStorage) TruncateSuffix(lastIndexKept uint64) uint64 {
-	return 0
-}
-
-// TODO
-func (this *LogStorage) reset(firstIndexKept uint64) uint64 {
-	return 0
-}
-
-// TODO
-func CreateLogStorage(uri string) *LogStorage {
-
-	return nil
+//----------------------------Log Storage 接口---------------------------------//
+type LogStorage interface {
+	FirstLogIndex() int64
+	LastLogIndex() int64
+	GetEntry(index int64) *LogEntry
+	GetTerm(index int64) int64
+	AppendEntry(entry *LogEntry)
+	AppendEntries(entries []*LogEntry)
+	TruncatePrefix(firstIndexKept int64)
+	TruncateSuffix(lastIndexKept int64)
+	reset(firstIndexKept int64)
 }
 
 
 
+//----------------------------Meta Storage 接口---------------------------------//
 
-
-
-
-
-
-type RaftMetaStorage struct  {
-
+type RaftMetaStorage interface {
+	setTerm(term int64)
+	getTerm() int64
+	setVotedFor(peerId PeerId)
+	getVotedFor(peerId PeerId)
+	setTermAndVotedFor(term int64, peerId PeerId)
 }

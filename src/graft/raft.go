@@ -1,7 +1,6 @@
 package graft
 
 
-type ErrorType int
 
 type Closure interface {
 	Run() int
@@ -24,7 +23,7 @@ type Error struct {
 type Task struct {
 	data         []byte
 	done         *Closure
-	expectedTerm uint64
+	expectedTerm int64
 }
 
 
@@ -40,7 +39,7 @@ type StateMachine interface {
 
 	onShutdown()
 
-	onLeaderStart(term uint64)
+	onLeaderStart(term int64)
 
 	onLeaderStop(status string)
 
@@ -78,14 +77,14 @@ func IsActiveState(s State) bool {
 
 type UserLog struct {
 	data []byte
-	index uint64
+	index int64
 }
 
 
 
 type BootstrapOptions struct {
 	groupConf *Configuration
-	lastLogIndex uint64
+	lastLogIndex int64
 	fsm *StateMachine
 	nodeOwnsFSM bool
 	logUri string

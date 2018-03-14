@@ -25,6 +25,11 @@ func Exists(path string) (bool, error) {
 	return true, err
 }
 
+
+func DeleteDir(path string) error {
+	return os.RemoveAll(path)
+}
+
 // ---------------------------byte[]和类型的转换-----------------------------//
 func DecodeUint64(buffer []byte, offset int, ret *uint64) {
 	*ret = binary.LittleEndian.Uint64(buffer[offset:])

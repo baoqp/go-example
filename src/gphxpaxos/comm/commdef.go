@@ -3,6 +3,7 @@ package comm
 import (
 	"encoding/binary"
 	"errors"
+	"math"
 )
 
 const (
@@ -81,3 +82,7 @@ var (
 	ErrNodeNotFound      = errors.New("node not found")
 	ErrWriteFileFail     = errors.New("write file fail")
 )
+
+
+var INVALID_INSTANCEID uint64 = math.MaxUint64
+var NULL_NODEID uint64 = math.MaxUint64 - 1

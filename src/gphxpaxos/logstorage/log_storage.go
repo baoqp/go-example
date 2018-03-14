@@ -2,9 +2,11 @@ package logstorage
 
 import "math"
 
-const MINCHOSEN_KEY = math.MaxUint64 - 1
-const SYSTEMVARIABLES_KEY = MINCHOSEN_KEY - 1
-const MASTERVARIABLES_KEY = MINCHOSEN_KEY - 2
+const (
+	MINCHOSEN_KEY       = math.MaxUint64 - 1 // TODO ???
+	SYSTEMVARIABLES_KEY = MINCHOSEN_KEY - 1
+	MASTERVARIABLES_KEY = MINCHOSEN_KEY - 2
+)
 
 type WriteOptions struct {
 	Sync bool
@@ -32,6 +34,27 @@ type WriteOptions struct {
       acceptor state data(data len - sizeof(uint64))
  */
 type LogStorage interface {
-	GetMaxInstanceIDFileID() (string, uint64, error)
-	rebuildOneIndex(instanceId uint64, fileIdstr string) error
+	GetLogStorageDirPath(groupIdx int) (string, error)
+
+	Get(groupIdx int, instanceID uint64) ([]byte, error)
+
+	Put(writeOptions *WriteOptions, groupIdx int, instanceID uint64, value []byte) error
+
+	Del(writeOptions *WriteOptions, groupIdx int, instanceID uint64) error
+
+	GetMaxInstanceID(groupIdx int) (uint64, error)
+
+	SetMinChosenInstanceID(writeOptions *WriteOptions, groupIdx int, llMinInstanceID uint64) error
+
+	GetMinChosenInstanceID(groupIdx int) (uint64, error)
+
+	ClearAllLog(groupIdx int) error
+
+	SetSystemVariables(writeOptions *WriteOptions, groupIdx int, value string) error
+
+	GetSystemVariables(groupIdx int) ([]byte, error)
+
+	SetMasterVariables(writeOptions *WriteOptions, groupIdx int, value string) error
+
+	GetMasterVariables(groupIdx int) ([]byte, error)
 }

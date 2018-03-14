@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"gphxpaxos/comm"
 	"github.com/golang/protobuf/proto"
-	"syscall"
 )
 
 // 存储value
@@ -36,13 +35,14 @@ func NewLogStore() *LogStore {
 		nowFileOffset: 0}
 }
 
-func (logStore *LogStore) Init(path string, db LogStorage) error {
+func (logStore *LogStore) Init(path string, db *Database) error {
 	logStore.deletedMaxFileId = -1
 	logStore.path = path + "/vfile" // value file 所在目录
 	logStore.file = nil
 	logStore.fileId = -1
 
-	exists, _ := util.Exists(logStore.path) // linux 下可以直接用syscall.Access(logStore.path, syscall.F_OK)
+	//这里用exists判断，linux中使用 syscall.Access(logStore.path, syscall.F_OK)
+	exists, _ := util.Exists(logStore.path)
 	if !exists {
 		err := os.MkdirAll(logStore.path, os.ModePerm)
 		if err != nil {
@@ -124,7 +124,7 @@ func (logStore *LogStore) Close() {
 }
 
 // 追加value， 参看value文件的数据格式
-func (logStore *LogStore) Append(options WriteOptions, instanceId uint64, buffer []byte, fileIdStr *string) error {
+func (logStore *LogStore) Append(options *WriteOptions, instanceId uint64, buffer []byte, fileIdStr *string) error {
 	begin := util.NowTimeMs()
 
 	logStore.mutex.Lock()
@@ -198,7 +198,7 @@ func (logStore *LogStore) Read(fileIdstr string, instanceId *uint64) ([]byte, er
 		return nil, err
 	}
 	if n != comm.INT32SIZE {
-		return nil, fmt.Errorf("read len %d not equal to %d", n, util.INT32SIZE)
+		return nil, fmt.Errorf("read len %d not equal to %d", n, comm.INT32SIZE)
 	}
 
 	var bufferlen int32
@@ -258,7 +258,7 @@ func (logStore *LogStore) ForceDel(fileIdStr string, instanceId uint64) error {
 	logStore.DecodeFileId(fileIdStr, &fileId, &offset, &cksum)
 
 	if logStore.fileId != fileId {
-		err := fmt.Errorf("del fileid %d not equal to fileid %d", fileId, self.fileId)
+		err := fmt.Errorf("del fileid %d not equal to fileid %d", fileId, logStore.fileId)
 		log.Error(err)
 		return err
 	}
@@ -291,7 +291,7 @@ func (logStore *LogStore) DeleteFile(fileId int32) error {
 	for deleteFileId := logStore.deletedMaxFileId + 1; deleteFileId <= fileId; deleteFileId++ {
 		filePath := fmt.Sprintf("%s/%d.f", logStore.path, deleteFileId)
 
-		exists, err := syscall.Access(filePath, syscall.F_OK)
+		exists, err := util.Exists(filePath)
 		if !exists {
 			log.Debug("file already deleted, filepath %s", filePath)
 			logStore.deletedMaxFileId = deleteFileId
@@ -312,7 +312,7 @@ func (logStore *LogStore) DeleteFile(fileId int32) error {
 	return err
 }
 
-func (logStore *LogStore) rebuildIndex(db *LogStorage, nowOffset *uint64) error {
+func (logStore *LogStore) rebuildIndex(db *Database, nowOffset *uint64) error {
 	// 1. get max instance id and file id from leveldb 从level db 获取最大的instance id和file id
 	lastFileId, nowInstanceId, err := db.GetMaxInstanceIDFileID()
 	if err != nil {
@@ -354,7 +354,7 @@ func (logStore *LogStore) rebuildIndex(db *LogStorage, nowOffset *uint64) error 
 
 // 从vfile中读取已存储的值并编码成LevelDB中fileId的形式保存到LevelDB
 func (logStore *LogStore) RebuildIndexForOneFile(fileId int32, offset uint64,
-	db *LogStorage, nowWriteOffset *uint64, nowInstanceId *uint64) error {
+	db *Database, nowWriteOffset *uint64, nowInstanceId *uint64) error {
 
 	var err error = nil
 	var file *os.File = nil
@@ -580,7 +580,7 @@ func (logStore *LogStore) getFileId(needWriteSize uint32, fileId *int32, offset 
 			return err
 		}
 
-		logStore.Info("new file expand ok, file id %d filesize %d", logStore.fileId, logStore.nowFileSize)
+		log.Info("new file expand ok, file id %d filesize %d", logStore.fileId, logStore.nowFileSize)
 	}
 
 	*fileId = logStore.fileId

@@ -1,5 +1,16 @@
 package comm
 
+import (
+	"encoding/binary"
+	"errors"
+)
+
+const (
+	CRC32_SKIP    = 0
+	NET_CRC32SKIP = 0
+)
+
+
 const (
 	MAX_QUEUE_MEM_SIZE = 209715200
 
@@ -45,4 +56,28 @@ const (
 	Timer_Proposer_Accept_Timeout  = 2
 	Timer_Learner_Askforlearn_noop = 3
 	Timer_Instance_Commit_Timeout  = 4
+)
+
+
+var (
+	INT32SIZE  = binary.Size(int32(0))
+	INT64SIZE  = binary.Size(int64(0))
+	UINT32SIZE = binary.Size(uint32(0))
+	UINT64SIZE = binary.Size(uint64(0))
+	UINT16SIZE = binary.Size(uint16(0))
+)
+
+
+// 自定义错误
+var (
+	ErrKeyNotFound       = errors.New("key not found")
+	ErrGetFail           = errors.New("get fail")
+	ErrInvalidGroupIndex = errors.New("invalid group index")
+	ErrInvalidInstanceId = errors.New("invalid instanceid")
+	ErrInvalidMetaFileId = errors.New("invalid meta file id")
+	ErrInvalidMsg        = errors.New("invalid msg")
+	ErrFileNotExist      = errors.New("file not exist")
+	ErrDbNotInit         = errors.New("db not init yet")
+	ErrNodeNotFound      = errors.New("node not found")
+	ErrWriteFileFail     = errors.New("write file fail")
 )

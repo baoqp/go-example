@@ -11,7 +11,6 @@ const (
 	NET_CRC32SKIP = 0
 )
 
-
 const (
 	MAX_QUEUE_MEM_SIZE = 209715200
 
@@ -59,7 +58,6 @@ const (
 	Timer_Instance_Commit_Timeout  = 4
 )
 
-
 var (
 	INT32SIZE  = binary.Size(int32(0))
 	INT64SIZE  = binary.Size(int64(0))
@@ -67,7 +65,6 @@ var (
 	UINT64SIZE = binary.Size(uint64(0))
 	UINT16SIZE = binary.Size(uint16(0))
 )
-
 
 // 自定义错误
 var (
@@ -83,6 +80,7 @@ var (
 	ErrWriteFileFail     = errors.New("write file fail")
 )
 
-
 var INVALID_INSTANCEID uint64 = math.MaxUint64
 var NULL_NODEID uint64 = math.MaxUint64 - 1
+
+var UINT64_0 = uint64(0)

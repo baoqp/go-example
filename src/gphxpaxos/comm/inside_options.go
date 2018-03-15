@@ -13,17 +13,19 @@ type InsideOptions struct {
 }
 
 var once sync.Once
-var iinsideOptions *InsideOptions
+var insideOptions *InsideOptions
 
-func GetInstance() *InsideOptions {
+
+func GetInsideOptions() *InsideOptions {
 	once.Do(func() {
-		iinsideOptions = &InsideOptions{
+		insideOptions = &InsideOptions{
 			isLargeBufferMode: false,
 			isIMFollower:      false,
 			groupCount:        1}
 
 	})
-	return iinsideOptions
+
+	return insideOptions
 }
 
 func (insideOptions *InsideOptions) SetAsLargeBufferMode() {
@@ -45,28 +47,28 @@ func (insideOptions *InsideOptions) GetMaxBufferSize() int {
 	return 10485760
 }
 
-func (insideOptions *InsideOptions) GetStartPrepareTimeoutMs() int {
+func (insideOptions *InsideOptions) GetStartPrepareTimeoutMs() uint32 {
 	if insideOptions.isLargeBufferMode {
 		return 15000
 	}
 	return 2000
 }
 
-func (insideOptions *InsideOptions) GetStartAcceptTimeoutMs() int {
+func (insideOptions *InsideOptions) GetStartAcceptTimeoutMs() uint32 {
 	if insideOptions.isLargeBufferMode {
 		return 15000
 	}
 	return 2000
 }
 
-func (insideOptions *InsideOptions) GetMaxPrepareTimeoutMs() int {
+func (insideOptions *InsideOptions) GetMaxPrepareTimeoutMs() uint32 {
 	if insideOptions.isLargeBufferMode {
 		return 90000
 	}
 	return 8000
 }
 
-func (insideOptions *InsideOptions) GetMaxAcceptTimeoutMs() int {
+func (insideOptions *InsideOptions) GetMaxAcceptTimeoutMs() uint32 {
 	if insideOptions.isLargeBufferMode {
 		return 90000
 	}

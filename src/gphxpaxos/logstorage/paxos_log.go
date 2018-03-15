@@ -5,7 +5,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"fmt"
 	log "github.com/sirupsen/logrus"
-	"log"
 )
 
 type PaxosLog struct {
@@ -16,7 +15,7 @@ func (paxosLog *PaxosLog) WriteLog(options *WriteOptions, groupIdx int,
 	instanceId uint64, value []byte) error {
 
 	state := &comm.AcceptorStateData{
-		InstanceID:     &instanceId, // TODO  proto 生成的代码里面是*uint64类型，为什么不是uint64
+		InstanceID:     &instanceId, //也可以使用 proto.Uint64 包装下
 		AcceptedValue:  value,
 		PromiseID:      &comm.UINT64_0,
 		PromiseNodeID:  &comm.UINT64_0,
@@ -40,8 +39,14 @@ func (paxosLog *PaxosLog) ReadLog(groupIdx int, instanceId uint64) ([]byte, erro
 	return value, nil
 }
 
-func (paxosLog *PaxosLog) GetMaxInstanceIDFromLog(groupIdx int) (uint64, error) {
+func (paxosLog *PaxosLog) GetMaxInstanceIdFromLog(groupIdx int) (uint64, error) {
+	instanceId, err := paxosLog.logStorage.GetMaxInstanceId(groupIdx)
+	if err != nil {
+		log.Error("db.getmax fail, error:%v", err)
+		return comm.INVALID_INSTANCEID, err
+	}
 
+	return instanceId, nil
 }
 
 func (paxosLog *PaxosLog) WriteState(options *WriteOptions, groupIdx int, instanceId uint64, state *comm.AcceptorStateData) error {

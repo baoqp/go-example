@@ -6,6 +6,9 @@ import (
 	"os"
 	"encoding/binary"
 	"hash/crc32"
+	"strings"
+	"strconv"
+	"bytes"
 )
 
 func Rand(up int) int {
@@ -25,12 +28,25 @@ func Exists(path string) (bool, error) {
 	return true, err
 }
 
-
 func DeleteDir(path string) error {
 	return os.RemoveAll(path)
 }
 
-// ---------------------------byte[]和类型的转换-----------------------------//
+
+//---------------------------------[]byte操作-------------------------------------//
+
+func AppendBytes(inputs ...[]byte) [] byte {
+	return bytes.Join(inputs, []byte(""))
+}
+
+func CopyBytes(src []byte) [] byte {
+	dst := make([]byte, len(src))
+	copy(dst, src)
+	return dst
+}
+
+
+// ---------------------------[]byte和类型的转换-----------------------------//
 func DecodeUint64(buffer []byte, offset int, ret *uint64) {
 	*ret = binary.LittleEndian.Uint64(buffer[offset:])
 }
@@ -71,8 +87,6 @@ func Crc32(crc uint32, value []byte, skiplen int) uint32 { // crc32编码
 	return crc32.Update(crc, crc32.IEEETable, []byte(data))
 }
 
-
-
 // ---------------------------------时间相关操作---------------------------------//
 func NowTimeMs() uint64 {
 	return uint64(time.Now().UnixNano() / 1000000)
@@ -81,3 +95,19 @@ func NowTimeMs() uint64 {
 func SleepMs(ms int32) {
 	time.Sleep(time.Duration(ms) * time.Millisecond)
 }
+
+func Inet_addr(ipaddr string) uint32 {
+	var (
+		ip                 = strings.Split(ipaddr, ".")
+		ip1, ip2, ip3, ip4 uint64
+		ret                uint32
+	)
+	ip1, _ = strconv.ParseUint(ip[0], 10, 8)
+	ip2, _ = strconv.ParseUint(ip[1], 10, 8)
+	ip3, _ = strconv.ParseUint(ip[2], 10, 8)
+	ip4, _ = strconv.ParseUint(ip[3], 10, 8)
+	ret = uint32(ip4)<<24 + uint32(ip3)<<16 + uint32(ip2)<<8 + uint32(ip1)
+	return ret
+}
+
+

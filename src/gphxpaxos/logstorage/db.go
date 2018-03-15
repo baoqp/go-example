@@ -93,15 +93,15 @@ func (database *Database) GetDBPath() string {
 }
 
 func (database *Database) ClearAllLog() error {
-	var systemVariablesBuffer string
-	err := database.GetSystemVariables(&systemVariablesBuffer)
+
+	systemVariablesBuffer, err := database.GetSystemVariables()
 	if err != nil && err != comm.ErrKeyNotFound {
 		log.Error("GetSystemVariables fail, ret %v", err)
 		return err
 	}
 
-	var masterVariablesBuffer string
-	err = database.GetMasterVariables(&masterVariablesBuffer)
+
+	masterVariablesBuffer, err := database.GetMasterVariables()
 	if err != nil && err != comm.ErrKeyNotFound {
 		log.Error("GetMasterVariables fail, ret %v", err)
 		return err
@@ -155,14 +155,14 @@ func (database *Database) Get(instanceId uint64) ([]byte, error) {
 		return nil, err
 	}
 
-	var fileId string
-	err = database.getFromLevelDb(instanceId, &fileId) // 从LevelDB中获取fileid
+
+	fileId, err := database.getFromLevelDb(instanceId) // 从LevelDB中获取fileid
 	if err != nil {
 		return nil, err
 	}
 
 	var fileinstanceId uint64
-	value, err := database.fileIdToValue(fileId, &fileinstanceId) // 从vfile中获取value
+	value, err := database.fileIdToValue(string(fileId), &fileinstanceId) // 从vfile中获取value
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +264,7 @@ func (database *Database) ForceDel(options WriteOptions, instanceId uint64) erro
 }
 
 // 获取最大的instanceId，其实就是LevelDB最大的key
-func (database *Database) GetMaxinstanceId() (uint64, error) {
+func (database *Database) GetMaxInstanceId() (uint64, error) {
 	var instanceId uint64 = MINCHOSEN_KEY
 	iter := database.leveldb.NewIterator(nil, &opt.ReadOptions{})
 
@@ -286,7 +286,7 @@ func (database *Database) GetMaxinstanceId() (uint64, error) {
 	return comm.INVALID_INSTANCEID, comm.ErrKeyNotFound
 }
 
-func (database *Database) GetMaxinstanceIdFileID() (string, uint64, error) {
+func (database *Database) GetMaxinstanceIdFileId() (string, uint64, error) {
 	maxinstanceId, err := database.GetMaxinstanceId()
 	if err != nil {
 		return "", 0, nil
@@ -371,16 +371,16 @@ func (database *Database) GetMinChoseninstanceId() (uint64, error) {
 	return mininstanceId, nil
 }
 
-func (database *Database) SetSystemVariables(writeOptions *WriteOptions, value string) error {
-	return database.putToLevelDB(true, SYSTEMVARIABLES_KEY, []byte(value))
+func (database *Database) SetSystemVariables(writeOptions *WriteOptions, value []byte) error {
+	return database.putToLevelDB(true, SYSTEMVARIABLES_KEY, value)
 }
 
 func (database *Database) GetSystemVariables() ([]byte, error) {
 	return database.getFromLevelDb(SYSTEMVARIABLES_KEY)
 }
 
-func (database *Database) SetMasterVariables(writeOptions *WriteOptions, value string) error {
-	return database.putToLevelDB(true, MASTERVARIABLES_KEY, []byte(value))
+func (database *Database) SetMasterVariables(writeOptions *WriteOptions, value []byte) error {
+	return database.putToLevelDB(true, MASTERVARIABLES_KEY, value)
 }
 
 func (database *Database) GetMasterVariables() ([]byte, error) {
@@ -569,7 +569,7 @@ func (multiDatabase *MultiDatabase) ClearAllLog(groupIdx int) error {
 	return multiDatabase.dbList[groupIdx].ClearAllLog()
 }
 
-func (multiDatabase *MultiDatabase) SetSystemVariables(writeOptions *WriteOptions, groupIdx int, value string) error {
+func (multiDatabase *MultiDatabase) SetSystemVariables(writeOptions *WriteOptions, groupIdx int, value []byte) error {
 	if groupIdx > len(multiDatabase.dbList) {
 		return fmt.Errorf("groupIdx out of bround")
 	}
@@ -588,7 +588,7 @@ func (multiDatabase *MultiDatabase) GetSystemVariables(groupIdx int) ([]byte, er
 
 }
 
-func (multiDatabase *MultiDatabase) SetMasterVariables(writeOptions *WriteOptions, groupIdx int, value string) error {
+func (multiDatabase *MultiDatabase) SetMasterVariables(writeOptions *WriteOptions, groupIdx int, value []byte) error {
 	if groupIdx > len(multiDatabase.dbList) {
 		return   fmt.Errorf("groupIdx out of bround")
 	}

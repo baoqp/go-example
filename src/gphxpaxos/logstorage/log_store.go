@@ -314,7 +314,7 @@ func (logStore *LogStore) DeleteFile(fileId int32) error {
 
 func (logStore *LogStore) rebuildIndex(db *Database, nowOffset *uint64) error {
 	// 1. get max instance id and file id from leveldb 从level db 获取最大的instance id和file id
-	lastFileId, nowInstanceId, err := db.GetMaxInstanceIDFileID()
+	lastFileId, nowInstanceId, err := db.GetMaxinstanceIdFileId()
 	if err != nil {
 		return err
 	}

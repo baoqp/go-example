@@ -6,6 +6,11 @@ import (
 	"math"
 )
 
+const(
+	Version = 1
+)
+
+
 const (
 	CRC32_SKIP    = 0
 	NET_CRC32SKIP = 0

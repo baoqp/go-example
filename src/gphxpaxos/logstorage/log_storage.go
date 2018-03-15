@@ -42,19 +42,19 @@ type LogStorage interface {
 
 	Del(writeOptions *WriteOptions, groupIdx int, instanceID uint64) error
 
-	GetMaxInstanceID(groupIdx int) (uint64, error)
+	GetMaxInstanceId(groupIdx int) (uint64, error)
 
-	SetMinChosenInstanceID(writeOptions *WriteOptions, groupIdx int, llMinInstanceID uint64) error
+	SetMinChoseninstanceId(writeOptions *WriteOptions, groupIdx int, minInstanceID uint64) error
 
-	GetMinChosenInstanceID(groupIdx int) (uint64, error)
+	GetMinChosenInstanceId(groupIdx int) (uint64, error)
 
 	ClearAllLog(groupIdx int) error
 
-	SetSystemVariables(writeOptions *WriteOptions, groupIdx int, value string) error
+	SetSystemVariables(writeOptions *WriteOptions, groupIdx int, value []byte) error
 
 	GetSystemVariables(groupIdx int) ([]byte, error)
 
-	SetMasterVariables(writeOptions *WriteOptions, groupIdx int, value string) error
+	SetMasterVariables(writeOptions *WriteOptions, groupIdx int, value []byte) error
 
 	GetMasterVariables(groupIdx int) ([]byte, error)
 }

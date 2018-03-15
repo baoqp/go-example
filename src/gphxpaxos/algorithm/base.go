@@ -80,21 +80,21 @@ const (
 	BroadcastMessage_Type_RunSelf_None  = 3
 )
 
-var GROUPIDXLEN = int32(binary.Size(int(0)))
-var HEADLEN_LEN = int32(binary.Size(uint16(0)))
-var CHECKSUM_LEN = int32(binary.Size(uint32(0)))
+var GROUPIDXLEN = binary.Size(int(0))
+var HEADLEN_LEN = binary.Size(uint16(0))
+var CHECKSUM_LEN = binary.Size(uint32(0))
 
 type Base struct {
 	instanceId uint64
 	config     *config.Config
-	transport   network.MsgTransport
+	transport  network.MsgTransport
 	instance   *Instance
 	isTestMode bool
 }
 
 func init() {
-	HEADLEN_LEN = int32(binary.Size(uint16(0)))
-	CHECKSUM_LEN = int32(binary.Size(uint32(0)))
+	HEADLEN_LEN =  binary.Size(uint16(0))
+	CHECKSUM_LEN =  binary.Size(uint32(0))
 }
 
 func newBase(instance *Instance) Base {
@@ -114,19 +114,19 @@ func newBase(instance *Instance) Base {
 }
 
 func (base *Base) GetInstanceId() uint64 {
-	return Base.instanceId
+	return base.instanceId
 }
 
 func (base *Base) setInstanceId(instanceId uint64) {
-	Base.instanceId = instanceId
+	base.instanceId = instanceId
 }
 
 func (base *Base) newInstance() {
-	Base.instanceId++
+	base.instanceId++
 }
 
 func (base *Base) GetLastChecksum() uint32 {
-	return Base.instance.GetLastChecksum()
+	return base.instance.GetLastChecksum()
 }
 
 func (base *Base) packPaxosMsg(paxosMsg *comm.PaxosMsg) ([]byte, *comm.Header, error) {
@@ -146,18 +146,18 @@ func (base *Base) packCheckpointMsg(msg *comm.CheckpointMsg) ([]byte, *comm.Head
 		return nil, nil, err
 	}
 
-	return Base.packBaseMsg(body, comm.MsgCmd_CheckpointMsg)
+	return base.packBaseMsg(body, comm.MsgCmd_CheckpointMsg)
 }
 
-// format: headerlen(uint16) + header + body + crc32 checksum(uint32)
+// format: groupId(int) + headerlen(uint16) + header + body + crc32 checksum(uint32)
 func (base *Base) packBaseMsg(body []byte, cmd int32) (buffer []byte, header *comm.Header, err error) {
 	groupIdx := base.config.GetMyGroupId()
 
 	h := &comm.Header{
 		Cmdid: proto.Int32(cmd),
 		// buffer len + checksum len
-		Gid: proto.Uint64(base.config.GetGid()),
-		Rid: proto.Uint64(0),
+		Gid:     proto.Uint64(base.config.GetGid()),
+		Rid:     proto.Uint64(0),
 		Version: proto.Int32(comm.Version),
 	}
 	header = h
@@ -185,44 +185,40 @@ func (base *Base) packBaseMsg(body []byte, cmd int32) (buffer []byte, header *co
 	return
 }
 
-
+// TODO to be checked
 func (base *Base) unpackBaseMsg(buffer []byte, header *comm.Header) (body []byte, err error) {
 
-	headStartPos := int(GROUPIDXLEN + HEADLEN_LEN)
+	headStartPos := GROUPIDXLEN + HEADLEN_LEN
 
-	var bufferLen = int(len(buffer))
+	var bufferLen = len(buffer)
 
-
-	if bufferLen <  headStartPos {
+	if bufferLen < headStartPos {
 		log.Error("no head")
 		err = comm.ErrInvalidMsg
 		return
 	}
 
 	var headLen uint16
-	util.DecodeUint16(buffer, int(GROUPIDXLEN), &headLen)
+	util.DecodeUint16(buffer, GROUPIDXLEN, &headLen)
 
-	if bufferLen < headStartPos + int(headLen) {
+	if bufferLen < headStartPos+int(headLen) {
 		log.Error("msg head lost ")
 		err = comm.ErrInvalidMsg
 		return
 	}
 
-
 	bodyStartPos := headStartPos + int(headLen)
 
 	proto.Unmarshal(buffer[headStartPos:bodyStartPos], header)
 
-
-
-	if bodyStartPos + int32(CHECKSUM_LEN) > bufferLen {
+	if bodyStartPos + CHECKSUM_LEN > bufferLen {
 		log.Error("no checksum, body start pos %d, buffersize %d", bodyStartPos, bufferLen)
 		err = comm.ErrInvalidMsg
 		return
 	}
 
 	var cksum uint32
-	util.DecodeUint32(buffer, int(bufferLen-CHECKSUM_LEN), &cksum)
+	util.DecodeUint32(buffer, bufferLen-CHECKSUM_LEN, &cksum)
 
 	calCksum := util.Crc32(0, buffer[:bufferLen-CHECKSUM_LEN], comm.NET_CRC32SKIP)
 	if calCksum != cksum {
@@ -231,91 +227,87 @@ func (base *Base) unpackBaseMsg(buffer []byte, header *comm.Header) (body []byte
 		return
 	}
 
-	body = buffer[bodyStartPos:header.GetBodylen()+bodyStartPos-int32(util.UINT32SIZE)]
+	body = buffer[bodyStartPos : bufferLen-CHECKSUM_LEN]
 	err = nil
 	return
 }
 
-
-
-func (base *Base) sendCheckpointMessage(sendToNodeid uint64, msg *comm.CheckpointMsg) error {
-	if sendToNodeid == base.config.GetMyNodeId() {
+func (base *Base) sendCheckpointMessage(sendToNodeId uint64, msg *comm.CheckpointMsg, sendType int) error {
+	if sendToNodeId == base.config.GetMyNodeId() {
 		return nil
 	}
 
-	buffer, _, err := Base.packCheckpointMsg(msg)
+	buffer, _, err := base.packCheckpointMsg(msg)
 	if err != nil {
 		return err
 	}
 
-	return base.transport.SendMessage(sendToNodeid, buffer)
+	return base.transport.SendMessage(base.config.GetMyGroupId(), sendToNodeId, buffer, sendType)
 }
 
-func (base *Base) sendPaxosMessage(sendToNodeid uint64, msg *comm.PaxosMsg) error {
-	if sendToNodeid == base.config.GetMyNodeId() {
+func (base *Base) sendPaxosMessage(sendToNodeId uint64, msg *comm.PaxosMsg, sendType int) error {
+	if sendToNodeId == base.config.GetMyNodeId() {
 		base.instance.OnReceivePaxosMsg(msg, false)
 		return nil
 	}
 
-	buffer, _, err := Base.packPaxosMsg(msg)
+	buffer, _, err := base.packPaxosMsg(msg)
 	if err != nil {
 		log.Error("pack paxos msg error %v", err)
 		return err
 	}
 
-	return base.transport.SendMessage(sendToNodeid, buffer)
+	return base.transport.SendMessage(base.config.GetMyGroupId(), sendToNodeId, buffer, sendType)
 }
 
-func (base *Base) broadcastMessage(msg *comm.PaxosMsg, runType int) error {
+func (base *Base) broadcastMessage(msg *comm.PaxosMsg, runType int, sendType int) error {
 	if base.isTestMode {
 		return nil
 	}
 
-	if runType == BroadcastMessage_Type_RunBase_First {
-		err := Base.instance.OnReceivePaxosMsg(msg, false)
+	if runType == BroadcastMessage_Type_RunSelf_First {
+		err := base.instance.OnReceivePaxosMsg(msg, false)
 		if err != nil {
 			return err
 		}
 	}
 
-	buffer, _, err := Base.packPaxosMsg(msg)
+	buffer, _, err := base.packPaxosMsg(msg)
 	if err != nil {
 		return err
 	}
 
-	err = Base.transport.BroadcastMessage(buffer)
+	err = base.transport.BroadcastMessage(base.config.GetMyGroupId(), buffer, sendType)
 
-	if runType == BroadcastMessage_Type_RunBase_Final {
-		Base.instance.OnReceivePaxosMsg(msg, false)
+	if runType == BroadcastMessage_Type_RunSelf_Final {
+		base.instance.OnReceivePaxosMsg(msg, false)
 	}
 
 	return err
 }
 
-/*
-func (Base *Base) BroadcastMessageToFollower(msg *common.PaxosMsg) error {
-  var buffer []byte
-  err := Base.PackPaxosMsg(msg, buffer)
+
+func (base *Base) BroadcastMessageToFollower(msg *comm.PaxosMsg, sendType int) error {
+
+  value, _, err := base.packPaxosMsg(msg)
   if err != nil {
     return err
   }
 
-  return Base.transport.BroadcastMessageFollower(buffer)
+  return base.transport.BroadcastMessageFollower(base.config.GetMyGroupId(), value, sendType)
 }
 
-func (Base *Base) BroadcastMessageToTempNode(msg *common.PaxosMsg, sendType int) error {
-  var buffer []byte
-  err := Base.PackPaxosMsg(msg, buffer)
-  if err != nil {
+func (base *Base) BroadcastMessageToTempNode(msg *comm.PaxosMsg, sendType int) error {
+
+  value, _, err := base.packPaxosMsg(msg)
+	  if err != nil {
     return err
   }
 
-  return Base.transport.BroadcastMessageTempNode(buffer, sendType)
+  return base.transport.BroadcastMessageTempNode(base.config.GetMyGroupId(), value, sendType)
 }
-*/
+
 
 func (base *Base) setAsTestMode() {
 	base.isTestMode = true
 }
-
-

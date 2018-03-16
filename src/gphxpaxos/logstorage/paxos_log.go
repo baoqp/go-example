@@ -11,6 +11,10 @@ type PaxosLog struct {
 	logStorage LogStorage
 }
 
+func NewPaxosLog(logStorage LogStorage) *PaxosLog {
+	return &PaxosLog{logStorage: logStorage}
+}
+
 func (paxosLog *PaxosLog) WriteLog(options *WriteOptions, groupIdx int,
 	instanceId uint64, value []byte) error {
 
@@ -64,18 +68,18 @@ func (paxosLog *PaxosLog) WriteState(options *WriteOptions, groupIdx int, instan
 	return nil
 }
 
-func (paxosLog *PaxosLog) ReadState(groupIdx int, instanceId uint64, state *comm.AcceptorStateData) error {
+func (paxosLog *PaxosLog) ReadState(groupIdx int, instanceId uint64) (comm.AcceptorStateData, error) {
 	value, err := paxosLog.logStorage.Get(groupIdx, instanceId)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	err = proto.Unmarshal(value, state)
+	var state comm.AcceptorStateData
+	err = proto.Unmarshal(value, &state)
 
 	if err != nil {
 		log.Error("Read State error caused by unmarshal error ")
 	}
 
-	return err
+	return state, err
 }

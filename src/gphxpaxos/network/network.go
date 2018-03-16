@@ -5,6 +5,8 @@ const (
 	Message_SendType_TCP = 1
 )
 
+
+
 // 网络传输接口
 type NetWork interface {
 

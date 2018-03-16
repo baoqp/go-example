@@ -5,6 +5,7 @@ import (
 	"gphxpaxos/util"
 	"gphxpaxos/logstorage"
 	"gphxpaxos/network"
+	"gphxpaxos/node"
 )
 
 type NodeInfoList []*NodeInfo
@@ -47,7 +48,7 @@ type MasterChangeCallback func(int, *NodeInfo, uint64)
 // group的状态机数据
 type GroupSMInfo struct {
 	groupIdx    int
-	SMList      []*StateMachine
+	SMList      []node.StateMachine
 	isUseMaster bool // 是否使用内置的状态机来进行master选举
 }
 

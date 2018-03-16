@@ -1,7 +1,7 @@
 package algorithm
 
 import (
-	"log"
+	log "github.com/sirupsen/logrus"
 	"gphxpaxos/network"
 	"sync"
 	"gphxpaxos/config"
@@ -9,23 +9,31 @@ import (
 	"time"
 	"gphxpaxos/logstorage"
 	"gphxpaxos/util"
+	"gphxpaxos/node"
+	"gphxpaxos/comm"
+	"container/list"
+	"gphxpaxos/checkpoint"
+	"github.com/golang/protobuf/proto"
 )
 
 const (
 	RETRY_QUEUE_MAX_LEN = 300
 )
 
+type CommitMsg struct {
+}
+
 type Instance struct {
-	config        *config.Config
-	loglogstorage *logstorage.Logstorage
-	paxosLog      *logstorage.PaxosLog
-	committer     *Committer
-	commitctx     *CommitContext
-	proposer      *Proposer
-	learner       *Learner
-	acceptor      *Acceptor
-	name          string
-	factory       *statemachine.StatemachineFactory
+	config     *config.Config
+	logStorage logstorage.LogStorage
+	paxosLog   *logstorage.PaxosLog
+	committer  *Committer
+	commitctx  *CommitContext
+	proposer   *Proposer
+	learner    *Learner
+	acceptor   *Acceptor
+	name       string
+	factory    *node.SMFac
 
 	transport network.MsgTransport
 
@@ -35,7 +43,7 @@ type Instance struct {
 	end     bool
 
 	commitChan   chan CommitMsg
-	paxosMsgChan chan *common.PaxosMsg
+	paxosMsgChan chan *comm.PaxosMsg
 
 	retryMsgList *list.List
 
@@ -44,23 +52,23 @@ type Instance struct {
 	mutex        sync.Mutex
 }
 
-func NewInstance(config *config.Config, loglogstorage *logstorage.Loglogstorage, useCkReplayer bool) (*Instance, error) {
+func NewInstance(config *config.Config, logStorage logstorage.LogStorage, transport network.MsgTransport, useCkReplayer bool) (*Instance, error) {
 	instance := &Instance{
-		config:        config,
-		loglogstorage: loglogstorage,
-		paxosLog:      logstorage.NewPaxosLog(loglogstorage),
-		factory:       statemachine.NewStatemachineFactory(),
-		timerThread:   util.NewTimerThread(),
-		endChan:       make(chan bool),
-		commitChan:    make(chan CommitMsg),
-		paxosMsgChan:  make(chan *common.PaxosMsg, 100),
-		retryMsgList:  list.New(),
+		config:       config,
+		logStorage:   logStorage,
+		transport:    transport,
+		paxosLog:     logstorage.NewPaxosLog(logStorage),
+		factory:      node.NewSMFac(config.GetMyGroupId()),
+		timerThread:  util.NewTimerThread(),
+		endChan:      make(chan bool),
+		commitChan:   make(chan CommitMsg),
+		paxosMsgChan: make(chan *comm.PaxosMsg, 100),
+		retryMsgList: list.New(),
 	}
-	instance.initNetwork(config.GetOptions())
 
 	instance.acceptor = NewAcceptor(instance)
 
-	instance.ckMnger = checkpoint.NewCheckpointManager(config, instance.factory, loglogstorage, useCkReplayer)
+	instance.ckMnger = checkpoint.NewCheckpointManager(config, instance.factory, logStorage, useCkReplayer)
 	instance.ckMnger.Init()
 	cpInstanceId := instance.ckMnger.GetCheckpointInstanceID() + 1
 
@@ -99,7 +107,7 @@ func NewInstance(config *config.Config, loglogstorage *logstorage.Loglogstorage,
 	if err != nil {
 		return nil, err
 	}
-	instance.learner.Reset_AskforLearn_Noop(common.GetAskforLearnInterval())
+	instance.learner.Reset_AskforLearn_Noop(comm.GetAskforLearnInterval())
 
 	instance.ckMnger.Start()
 
@@ -108,100 +116,96 @@ func NewInstance(config *config.Config, loglogstorage *logstorage.Loglogstorage,
 	return instance, nil
 }
 
-func (self *Instance) initNetwork(options *gpaxos.Options) *Instance {
-	self.transport = network.NewNetwork(options, NewPaxosSessionFactory(self))
-	return self
-}
 
 // instance main loop
-func (self *Instance) main() {
+func (instance *Instance) main() {
 	end := false
 	for !end {
 		timer := time.NewTimer(100 * time.Millisecond)
 		select {
-		case <-self.endChan:
+		case <-instance.endChan:
 			end = true
 			break
-		case <-self.commitChan:
-			self.onCommit()
+		case <-instance.commitChan:
+			instance.onCommit()
 			break
-		case msg := <-self.paxosMsgChan:
-			self.OnReceivePaxosMsg(msg, false)
+		case msg := <-instance.paxosMsgChan:
+			instance.OnReceivePaxosMsg(msg, false)
 			break
 		case <-timer.C:
 			break
 		}
 
 		timer.Stop()
-		self.dealRetryMsg()
+		instance.dealRetryMsg()
 	}
 }
 
-func (self *Instance) Stop() {
-	self.end = true
-	self.endChan <- true
+func (instance *Instance) Stop() {
+	instance.end = true
+	instance.endChan <- true
 
-	self.transport.Close()
-	close(self.paxosMsgChan)
-	close(self.commitChan)
-	close(self.endChan)
-	self.timerThread.Stop()
+	// instance.transport.Close()
+	close(instance.paxosMsgChan)
+	close(instance.commitChan)
+	close(instance.endChan)
+	instance.timerThread.Stop()
 }
 
-func (self *Instance) Status(instanceId uint64) (Status, []byte) {
-	if instanceId < self.acceptor.GetInstanceId() {
-		value, _, _ := self.GetInstanceValue(instanceId)
+func (instance *Instance) Status(instanceId uint64) (Status, []byte) {
+	if instanceId < instance.acceptor.GetInstanceId() {
+		value, _, _ := instance.GetInstanceValue(instanceId)
 		return Decided, value
 	}
 
 	return Pending, nil
 }
 
-func (self *Instance) InitLastCheckSum() error {
-	acceptor := self.acceptor
-	ckMnger := self.ckMnger
+func (instance *Instance) InitLastCheckSum() error {
+	acceptor := instance.acceptor
+	ckMnger := instance.ckMnger
 
 	if acceptor.GetInstanceId() == 0 {
-		self.lastChecksum = 0
+		instance.lastChecksum = 0
 		return nil
 	}
 
 	if acceptor.GetInstanceId() <= ckMnger.GetMinChosenInstanceID() {
-		self.lastChecksum = 0
+		instance.lastChecksum = 0
 		return nil
 	}
 
-	state, err := self.paxosLog.ReadState(acceptor.GetInstanceId() - 1)
-	if err != nil && err != common.ErrKeyNotFound {
+	state, err := instance.paxosLog.ReadState(acceptor.GetInstanceId() - 1)
+	if err != nil && err != comm.ErrKeyNotFound {
 		return err
 	}
 
-	if err == common.ErrKeyNotFound {
-		log.Error("last checksum not exist, now instance id %d", self.acceptor.GetInstanceId())
-		self.lastChecksum = 0
+	if err == comm.ErrKeyNotFound {
+		log.Error("last checksum not exist, now instance id %d", instance.acceptor.GetInstanceId())
+		instance.lastChecksum = 0
 		return nil
 	}
 
-	self.lastChecksum = state.GetChecksum()
-	log.Info("OK, last checksum %d", self.lastChecksum)
+	instance.lastChecksum = state.GetChecksum()
+	log.Info("OK, last checksum %d", instance.lastChecksum)
 
 	return nil
 }
 
-func (self *Instance) PlayLog(beginInstanceId uint64, endInstanceId uint64) error {
-	if beginInstanceId < self.ckMnger.GetMinChosenInstanceID() {
-		log.Error("now instanceid %d small than chosen instanceid %d", beginInstanceId, self.ckMnger.GetMinChosenInstanceID())
-		return common.ErrInvalidInstanceId
+func (instance *Instance) PlayLog(beginInstanceId uint64, endInstanceId uint64) error {
+	if beginInstanceId < instance.ckMnger.GetMinChosenInstanceID() {
+		log.Error("now instanceid %d small than chosen instanceid %d", beginInstanceId, instance.ckMnger.GetMinChosenInstanceID())
+		return comm.ErrInvalidInstanceId
 	}
 
 	for instanceId := beginInstanceId; instanceId < endInstanceId; instanceId++ {
-		state, err := self.paxosLog.ReadState(instanceId)
+		state, err := instance.paxosLog.ReadState(instanceId)
 		if err != nil {
 			log.Error("read instance %d log fail %v", instanceId, err)
 			return err
 		}
 
-		err = self.factory.Execute(instanceId, state.GetAcceptedValue(), nil)
+		err = instance.factory.Execute(instanceId, state.GetAcceptedValue(), nil)
 		if err != nil {
 			log.Error("execute instanceid %d fail:%v", instanceId, err)
 			return err
@@ -211,219 +215,219 @@ func (self *Instance) PlayLog(beginInstanceId uint64, endInstanceId uint64) erro
 	return nil
 }
 
-func (self *Instance) NowInstanceId() uint64 {
-	self.mutex.Lock()
-	defer self.mutex.Unlock()
+func (instance *Instance) NowInstanceId() uint64 {
+	instance.mutex.Lock()
+	defer instance.mutex.Unlock()
 
-	return self.acceptor.GetInstanceId() - 1
+	return instance.acceptor.GetInstanceId() - 1
 }
 
 // try to propose a value, return instanceid end error
-func (self *Instance) Propose(value []byte) (uint64, error) {
-	log.Debug("[%s]try to propose value %s", self.name, string(value))
-	return self.committer.NewValue(value)
+func (instance *Instance) Propose(value []byte) (uint64, error) {
+	log.Debug("[%s]try to propose value %s", instance.name, string(value))
+	return instance.committer.NewValue(value)
 }
 
-func (self *Instance) dealRetryMsg() {
-	len := self.retryMsgList.Len()
+func (instance *Instance) dealRetryMsg() {
+	len := instance.retryMsgList.Len()
 	hasRetry := false
 	for i := 0; i < len; i++ {
-		obj := self.retryMsgList.Front()
-		msg := obj.Value.(*common.PaxosMsg)
+		obj := instance.retryMsgList.Front()
+		msg := obj.Value.(*comm.PaxosMsg)
 		msgInstanceId := msg.GetInstanceID()
-		nowInstanceId := self.GetNowInstanceId()
+		nowInstanceId := instance.GetNowInstanceId()
 
 		if msgInstanceId > nowInstanceId {
 			break
 		} else if msgInstanceId == nowInstanceId+1 {
 			if hasRetry {
-				self.OnReceivePaxosMsg(msg, true)
+				instance.OnReceivePaxosMsg(msg, true)
 				log.Debug("[%s]retry msg i+1 instanceid %d", msgInstanceId)
 			} else {
 				break
 			}
 		} else if msgInstanceId == nowInstanceId {
-			self.OnReceivePaxosMsg(msg, false)
+			instance.OnReceivePaxosMsg(msg, false)
 			log.Debug("[%s]retry msg instanceid %d", msgInstanceId)
 			hasRetry = true
 		}
 
-		self.retryMsgList.Remove(obj)
+		instance.retryMsgList.Remove(obj)
 	}
 }
 
-func (self *Instance) addRetryMsg(msg *common.PaxosMsg) {
-	if self.retryMsgList.Len() > RETRY_QUEUE_MAX_LEN {
-		obj := self.retryMsgList.Front()
-		self.retryMsgList.Remove(obj)
+func (instance *Instance) addRetryMsg(msg *comm.PaxosMsg) {
+	if instance.retryMsgList.Len() > RETRY_QUEUE_MAX_LEN {
+		obj := instance.retryMsgList.Front()
+		instance.retryMsgList.Remove(obj)
 	}
-	self.retryMsgList.PushBack(msg)
+	instance.retryMsgList.PushBack(msg)
 }
 
-func (self *Instance) clearRetryMsg() {
-	self.retryMsgList = list.New()
+func (instance *Instance) clearRetryMsg() {
+	instance.retryMsgList = list.New()
 }
 
-func (self *Instance) GetNowInstanceId() uint64 {
-	return self.acceptor.GetInstanceId()
+func (instance *Instance) GetNowInstanceId() uint64 {
+	return instance.acceptor.GetInstanceId()
 }
 
-func (self *Instance) sendCommitMsg() {
-	self.commitChan <- CommitMsg{}
+func (instance *Instance) sendCommitMsg() {
+	instance.commitChan <- CommitMsg{}
 }
 
 // handle commit message
-func (self *Instance) onCommit() {
-	if !self.commitctx.isNewCommit() {
+func (instance *Instance) onCommit() {
+	if !instance.commitctx.isNewCommit() {
 		return
 	}
 
-	if !self.learner.IsImLatest() {
+	if !instance.learner.IsImLatest() {
 		return
 	}
 
-	if self.config.IsIMFollower() {
-		log.Error("[%s]I'm follower, skip commit new value", self.name)
-		self.commitctx.setResultOnlyRet(gpaxos.PaxosTryCommitRet_Follower_Cannot_Commit)
+	if instance.config.IsIMFollower() {
+		log.Error("[%s]I'm follower, skip commit new value", instance.name)
+		instance.commitctx.setResultOnlyRet(gpaxos.PaxosTryCommitRet_Follower_Cannot_Commit)
 		return
 	}
 
-	commitValue := self.commitctx.getCommitValue()
-	if len(commitValue) > common.GetMaxValueSize() {
-		log.Error("[%s]value size %d to large, skip commit new value", self.name, len(commitValue))
-		self.commitctx.setResultOnlyRet(gpaxos.PaxosTryCommitRet_Value_Size_TooLarge)
+	commitValue := instance.commitctx.getCommitValue()
+	if len(commitValue) > comm.GetMaxValueSize() {
+		log.Error("[%s]value size %d to large, skip commit new value", instance.name, len(commitValue))
+		instance.commitctx.setResultOnlyRet(gpaxos.PaxosTryCommitRet_Value_Size_TooLarge)
 	}
 
-	timeOutMs := self.commitctx.StartCommit(self.proposer.GetInstanceId())
+	timeOutMs := instance.commitctx.StartCommit(instance.proposer.GetInstanceId())
 
-	log.Debug("[%s]start commit instance %d, timeout:%d", self.String(), self.proposer.GetInstanceId(), timeOutMs)
-	self.proposer.NewValue(self.commitctx.getCommitValue(), timeOutMs)
+	log.Debug("[%s]start commit instance %d, timeout:%d", instance.String(), instance.proposer.GetInstanceId(), timeOutMs)
+	instance.proposer.NewValue(instance.commitctx.getCommitValue(), timeOutMs)
 }
 
-func (self *Instance) String() string {
-	return self.name
+func (instance *Instance) String() string {
+	return instance.name
 }
 
-func (self *Instance) GetLastChecksum() uint32 {
+func (instance *Instance) GetLastChecksum() uint32 {
 	return 0
 }
 
-func (self *Instance) GetInstanceValue(instanceId uint64) ([]byte, int32, error) {
-	if instanceId >= self.acceptor.GetInstanceId() {
+func (instance *Instance) GetInstanceValue(instanceId uint64) ([]byte, int32, error) {
+	if instanceId >= instance.acceptor.GetInstanceId() {
 		return nil, -1, gpaxos.Paxos_GetInstanceValue_Value_Not_Chosen_Yet
 	}
 
-	state, err := self.paxosLog.ReadState(instanceId)
+	state, err := instance.paxosLog.ReadState(instanceId)
 	if err != nil {
 		return nil, -1, err
 	}
 
-	value, smid := self.factory.UnpackPaxosValue(state.GetAcceptedValue())
+	value, smid := instance.factory.UnpackPaxosValue(state.GetAcceptedValue())
 	return value, smid, nil
 }
 
-func (self *Instance) isCheckSumValid(msg *common.PaxosMsg) bool {
+func (instance *Instance) isCheckSumValid(msg *comm.PaxosMsg) bool {
 	return true
 }
 
-func (self *Instance) NewInstance(isMyCommit bool) {
-	self.acceptor.NewInstance(isMyCommit)
-	self.proposer.NewInstance(isMyCommit)
-	self.learner.NewInstance(isMyCommit)
+func (instance *Instance) NewInstance(isMyCommit bool) {
+	instance.acceptor.NewInstance(isMyCommit)
+	instance.proposer.NewInstance(isMyCommit)
+	instance.learner.NewInstance(isMyCommit)
 }
 
-func (self *Instance) receiveMsgForLearner(msg *common.PaxosMsg) error {
-	log.Info("[%s]recv msg %d for learner", self.name, msg.GetMsgType())
-	learner := self.learner
+func (instance *Instance) receiveMsgForLearner(msg *comm.PaxosMsg) error {
+	log.Info("[%s]recv msg %d for learner", instance.name, msg.GetMsgType())
+	learner := instance.learner
 	msgType := msg.GetMsgType()
 
 	switch msgType {
-	case common.MsgType_PaxosLearner_AskforLearn:
+	case comm.MsgType_PaxosLearner_AskforLearn:
 		learner.OnAskforLearn(msg)
 		break
-	case common.MsgType_PaxosLearner_SendLearnValue:
+	case comm.MsgType_PaxosLearner_SendLearnValue:
 		learner.OnSendLearnValue(msg)
 		break
-	case common.MsgType_PaxosLearner_ProposerSendSuccess:
+	case comm.MsgType_PaxosLearner_ProposerSendSuccess:
 		learner.OnProposerSendSuccess(msg)
 		break
-	case common.MsgType_PaxosLearner_SendNowInstanceID:
+	case comm.MsgType_PaxosLearner_SendNowInstanceID:
 		learner.OnSendNowInstanceId(msg)
 		break
-	case common.MsgType_PaxosLearner_ConfirmAskforLearn:
+	case comm.MsgType_PaxosLearner_ConfirmAskforLearn:
 		learner.OnConfirmAskForLearn(msg)
 		break
-	case common.MsgType_PaxosLearner_SendLearnValue_Ack:
+	case comm.MsgType_PaxosLearner_SendLearnValue_Ack:
 		learner.OnSendLearnValue_Ack(msg)
 		break
-	case common.MsgType_PaxosLearner_AskforCheckpoint:
+	case comm.MsgType_PaxosLearner_AskforCheckpoint:
 		learner.OnAskforCheckpoint(msg)
 		break
 	}
 	if learner.IsLearned() {
-		commitCtx := self.commitctx
+		commitCtx := instance.commitctx
 		isMyCommit, _ := commitCtx.IsMyCommit(msg.GetNodeID(), learner.GetInstanceId(), learner.GetLearnValue())
 		if isMyCommit {
-			log.Debug("[%s]instance %d is my commit", self.name, learner.GetInstanceId())
+			log.Debug("[%s]instance %d is my commit", instance.name, learner.GetInstanceId())
 		} else {
-			log.Debug("[%s]instance %d is not my commit", self.name, learner.GetInstanceId())
+			log.Debug("[%s]instance %d is not my commit", instance.name, learner.GetInstanceId())
 		}
 
 		commitCtx.setResult(gpaxos.PaxosTryCommitRet_OK, learner.GetInstanceId(), learner.GetLearnValue())
 
-		self.NewInstance(isMyCommit)
+		instance.NewInstance(isMyCommit)
 
 		log.Info("[%s]new paxos instance has started, Now instance id:proposer %d, acceptor %d, learner %d",
-			self.name, self.proposer.GetInstanceId(), self.acceptor.GetInstanceId(), self.learner.GetInstanceId())
+			instance.name, instance.proposer.GetInstanceId(), instance.acceptor.GetInstanceId(), instance.learner.GetInstanceId())
 	}
 	return nil
 }
 
-func (self *Instance) receiveMsgForProposer(msg *common.PaxosMsg) error {
-	if self.config.IsIMFollower() {
-		log.Error("[%s]follower skip %d msg", self.name, msg.GetMsgType())
+func (instance *Instance) receiveMsgForProposer(msg *comm.PaxosMsg) error {
+	if instance.config.IsIMFollower() {
+		log.Error("[%s]follower skip %d msg", instance.name, msg.GetMsgType())
 		return nil
 	}
 
 	msgInstanceId := msg.GetInstanceID()
-	proposerInstanceId := self.proposer.GetInstanceId()
+	proposerInstanceId := instance.proposer.GetInstanceId()
 
 	if msgInstanceId != proposerInstanceId {
 		log.Error("[%s]msg instance id %d not same to proposer instance id %d",
-			self.name, msgInstanceId, proposerInstanceId)
+			instance.name, msgInstanceId, proposerInstanceId)
 		return nil
 	}
 
 	msgType := msg.GetMsgType()
-	if msgType == common.MsgType_PaxosPrepareReply {
-		return self.proposer.OnPrepareReply(msg)
-	} else if msgType == common.MsgType_PaxosAcceptReply {
-		return self.proposer.OnAcceptReply(msg)
+	if msgType == comm.MsgType_PaxosPrepareReply {
+		return instance.proposer.OnPrepareReply(msg)
+	} else if msgType == comm.MsgType_PaxosAcceptReply {
+		return instance.proposer.OnAcceptReply(msg)
 	}
 
-	return common.ErrInvalidMsg
+	return comm.ErrInvalidMsg
 }
 
 // handle msg type which for acceptor
-func (self *Instance) receiveMsgForAcceptor(msg *common.PaxosMsg, isRetry bool) error {
-	if self.config.IsIMFollower() {
-		log.Error("[%s]follower skip %d msg", self.name, msg.GetMsgType())
+func (instance *Instance) receiveMsgForAcceptor(msg *comm.PaxosMsg, isRetry bool) error {
+	if instance.config.IsIMFollower() {
+		log.Error("[%s]follower skip %d msg", instance.name, msg.GetMsgType())
 		return nil
 	}
 
 	msgInstanceId := msg.GetInstanceID()
-	acceptorInstanceId := self.acceptor.GetInstanceId()
+	acceptorInstanceId := instance.acceptor.GetInstanceId()
 
-	log.Info("[%s]msg instance %d, acceptor instance %d", self.name, msgInstanceId, acceptorInstanceId)
+	log.Info("[%s]msg instance %d, acceptor instance %d", instance.name, msgInstanceId, acceptorInstanceId)
 	// msgInstanceId == acceptorInstanceId + 1  means acceptor instance has been approved
 	// so just learn it
 	if msgInstanceId == acceptorInstanceId+1 {
-		newMsg := &common.PaxosMsg{}
+		newMsg := &comm.PaxosMsg{}
 		util.CopyStruct(newMsg, *msg)
 		newMsg.InstanceID = proto.Uint64(acceptorInstanceId)
-		newMsg.MsgType = proto.Int(common.MsgType_PaxosLearner_ProposerSendSuccess)
+		newMsg.MsgType = proto.Int(comm.MsgType_PaxosLearner_ProposerSendSuccess)
 		log.Debug("learn it, node id: %d:%d", newMsg.GetNodeID(), msg.GetNodeID())
-		self.receiveMsgForLearner(newMsg)
+		instance.receiveMsgForLearner(newMsg)
 	}
 
 	msgType := msg.GetMsgType()
@@ -431,15 +435,15 @@ func (self *Instance) receiveMsgForAcceptor(msg *common.PaxosMsg, isRetry bool) 
 	// msg instance == acceptorInstanceId means this msg is what acceptor processing
 	// so call the acceptor function to handle it
 	if msgInstanceId == acceptorInstanceId {
-		if msgType == common.MsgType_PaxosPrepare {
-			return self.acceptor.onPrepare(msg)
-		} else if msgType == common.MsgType_PaxosAccept {
-			return self.acceptor.onAccept(msg)
+		if msgType == comm.MsgType_PaxosPrepare {
+			return instance.acceptor.onPrepare(msg)
+		} else if msgType == comm.MsgType_PaxosAccept {
+			return instance.acceptor.onAccept(msg)
 		}
 
 		// never reach here
 		log.Error("wrong msg type %d", msgType)
-		return common.ErrInvalidMsg
+		return comm.ErrInvalidMsg
 	}
 
 	// ignore retry msg
@@ -450,11 +454,11 @@ func (self *Instance) receiveMsgForAcceptor(msg *common.PaxosMsg, isRetry bool) 
 
 	// ignore expired msg
 	if msgInstanceId <= acceptorInstanceId {
-		log.Debug("[%s]ignore expired %d msg from %d, now %d", self.name, msgInstanceId, msg.GetNodeID(), acceptorInstanceId)
+		log.Debug("[%s]ignore expired %d msg from %d, now %d", instance.name, msgInstanceId, msg.GetNodeID(), acceptorInstanceId)
 		return nil
 	}
 
-	if msgInstanceId < self.learner.getSeenLatestInstanceId() {
+	if msgInstanceId < instance.learner.getSeenLatestInstanceId() {
 		log.Debug("ignore has learned msg")
 		return nil
 	}
@@ -467,91 +471,91 @@ func (self *Instance) receiveMsgForAcceptor(msg *common.PaxosMsg, isRetry bool) 
 		//  3. msg.instanceid >= seen latestinstanceid.
 		//    (if < seen latestinstanceid, proposer don't need reply with this instanceid anymore.)
 		//  4. msg.instanceid close to nowinstanceid.
-		self.addRetryMsg(msg)
+		instance.addRetryMsg(msg)
 	} else {
-		self.clearRetryMsg()
+		instance.clearRetryMsg()
 	}
 	return nil
 }
 
-func (self *Instance) OnReceivePaxosMsg(msg *common.PaxosMsg, isRetry bool) error {
-	proposer := self.proposer
-	learner := self.learner
+func (instance *Instance) OnReceivePaxosMsg(msg *comm.PaxosMsg, isRetry bool) error {
+	proposer := instance.proposer
+	learner := instance.learner
 	msgType := msg.GetMsgType()
 
 	log.Info("[%s]instance id %d, msg instance id:%d, msgtype: %d, from: %d, my node id:%d, latest instanceid %d",
-		self.name, proposer.GetInstanceId(), msg.GetInstanceID(), msgType, msg.GetNodeID(),
-		self.config.GetMyNodeId(), learner.getSeenLatestInstanceId())
+		instance.name, proposer.GetInstanceId(), msg.GetInstanceID(), msgType, msg.GetNodeID(),
+		instance.config.GetMyNodeId(), learner.getSeenLatestInstanceId())
 
 	// handle msg for acceptor
-	if msgType == common.MsgType_PaxosPrepare || msgType == common.MsgType_PaxosAccept {
-		if !self.config.IsValidNodeID(msg.GetNodeID()) {
-			self.config.AddTmpNodeOnlyForLearn(msg.GetNodeID())
-			log.Error("[%s]is not valid node id", self.name)
+	if msgType == comm.MsgType_PaxosPrepare || msgType == comm.MsgType_PaxosAccept {
+		if !instance.config.IsValidNodeID(msg.GetNodeID()) {
+			instance.config.AddTmpNodeOnlyForLearn(msg.GetNodeID())
+			log.Error("[%s]is not valid node id", instance.name)
 			return nil
 		}
 
-		if !self.isCheckSumValid(msg) {
-			log.Error("[%s]checksum invalid", self.name)
-			return common.ErrInvalidMsg
+		if !instance.isCheckSumValid(msg) {
+			log.Error("[%s]checksum invalid", instance.name)
+			return comm.ErrInvalidMsg
 		}
 
-		return self.receiveMsgForAcceptor(msg, isRetry)
+		return instance.receiveMsgForAcceptor(msg, isRetry)
 	}
 
 	// handle paxos prepare and accept reply msg
-	if (msgType == common.MsgType_PaxosPrepareReply || msgType == common.MsgType_PaxosAcceptReply) {
-		return self.receiveMsgForProposer(msg)
+	if (msgType == comm.MsgType_PaxosPrepareReply || msgType == comm.MsgType_PaxosAcceptReply) {
+		return instance.receiveMsgForProposer(msg)
 	}
 
 	// handler msg for learner
-	if (msgType == common.MsgType_PaxosLearner_AskforLearn ||
-		msgType == common.MsgType_PaxosLearner_SendLearnValue ||
-		msgType == common.MsgType_PaxosLearner_ProposerSendSuccess ||
-		msgType == common.MsgType_PaxosLearner_ConfirmAskforLearn ||
-		msgType == common.MsgType_PaxosLearner_SendNowInstanceID ||
-		msgType == common.MsgType_PaxosLearner_SendLearnValue_Ack ||
-		msgType == common.MsgType_PaxosLearner_AskforCheckpoint) {
-		if !self.isCheckSumValid(msg) {
-			return common.ErrInvalidMsg
+	if (msgType == comm.MsgType_PaxosLearner_AskforLearn ||
+		msgType == comm.MsgType_PaxosLearner_SendLearnValue ||
+		msgType == comm.MsgType_PaxosLearner_ProposerSendSuccess ||
+		msgType == comm.MsgType_PaxosLearner_ConfirmAskforLearn ||
+		msgType == comm.MsgType_PaxosLearner_SendNowInstanceID ||
+		msgType == comm.MsgType_PaxosLearner_SendLearnValue_Ack ||
+		msgType == comm.MsgType_PaxosLearner_AskforCheckpoint) {
+		if !instance.isCheckSumValid(msg) {
+			return comm.ErrInvalidMsg
 		}
 
-		return self.receiveMsgForLearner(msg)
+		return instance.receiveMsgForLearner(msg)
 	}
 
 	log.Error("invalid msg %d", msgType)
-	return common.ErrInvalidMsg
+	return comm.ErrInvalidMsg
 }
 
-func (self *Instance) OnTimeout(timer *util.Timer) {
+func (instance *Instance) OnTimeout(timer *util.Timer) {
 	if timer.TimerType == PrepareTimer {
-		self.proposer.onPrepareTimeout()
+		instance.proposer.onPrepareTimeout()
 		return
 	}
 
 	if timer.TimerType == AcceptTimer {
-		self.proposer.onAcceptTimeout()
+		instance.proposer.onAcceptTimeout()
 		return
 	}
 
 	if timer.TimerType == LearnerTimer {
-		self.learner.AskforLearn_Noop()
+		instance.learner.AskforLearn_Noop()
 		return
 	}
 }
 
-func (self *Instance) OnReceiveMsg(buffer []byte, cmd int32) error {
-	if self.end {
+func (instance *Instance) OnReceiveMsg(buffer []byte, cmd int32) error {
+	if instance.end {
 		return nil
 	}
-	if cmd == common.MsgCmd_PaxosMsg {
-		var msg common.PaxosMsg
+	if cmd == comm.MsgCmd_PaxosMsg {
+		var msg comm.PaxosMsg
 		err := proto.Unmarshal(buffer, &msg)
 		if err != nil {
-			log.Error("[%s]unmarshal msg error %v", self.name, err)
+			log.Error("[%s]unmarshal msg error %v", instance.name, err)
 			return err
 		}
-		self.paxosMsgChan <- &msg
+		instance.paxosMsgChan <- &msg
 	}
 
 	return nil

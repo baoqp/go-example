@@ -21,7 +21,6 @@ func StartRoutine(f func()) {
 }
 
 
-
 type TimerThread struct {
 	// save timer id
 	nowTimerId uint32

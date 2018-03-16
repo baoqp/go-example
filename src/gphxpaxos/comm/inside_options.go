@@ -114,7 +114,7 @@ func (insideOptions *InsideOptions) GetLearnerReceiverAckLead() int {
 }
 
 func (insideOptions *InsideOptions) GetLearnerSenderPrepareTimeoutMs() int {
-	if iinsideOptions.isLargeBufferMode {
+	if insideOptions.isLargeBufferMode {
 		return 6000
 	}
 
@@ -122,7 +122,7 @@ func (insideOptions *InsideOptions) GetLearnerSenderPrepareTimeoutMs() int {
 }
 
 func (insideOptions *InsideOptions) GetLearnerSenderAckTimeoutMs() int {
-	if iinsideOptions.isLargeBufferMode {
+	if insideOptions.isLargeBufferMode {
 		return 6000
 	}
 
@@ -130,7 +130,7 @@ func (insideOptions *InsideOptions) GetLearnerSenderAckTimeoutMs() int {
 }
 
 func (insideOptions *InsideOptions) GetLearnerSenderAckLead() int {
-	if iinsideOptions.isLargeBufferMode {
+	if insideOptions.isLargeBufferMode {
 		return 5
 	}
 
@@ -138,7 +138,7 @@ func (insideOptions *InsideOptions) GetLearnerSenderAckLead() int {
 }
 
 func (insideOptions *InsideOptions) GetTcpOutQueueDropTimeMs() int {
-	if iinsideOptions.isLargeBufferMode {
+	if insideOptions.isLargeBufferMode {
 		return 20000
 	}
 
@@ -146,7 +146,7 @@ func (insideOptions *InsideOptions) GetTcpOutQueueDropTimeMs() int {
 }
 
 func (insideOptions *InsideOptions) GetLogFileMaxSize() int {
-	if iinsideOptions.isLargeBufferMode {
+	if insideOptions.isLargeBufferMode {
 		return 524288000
 	}
 
@@ -154,7 +154,7 @@ func (insideOptions *InsideOptions) GetLogFileMaxSize() int {
 }
 
 func (insideOptions *InsideOptions) GetTcpConnectionNonActiveTimeout() int {
-	if iinsideOptions.isLargeBufferMode {
+	if insideOptions.isLargeBufferMode {
 		return 600000
 	}
 
@@ -162,7 +162,7 @@ func (insideOptions *InsideOptions) GetTcpConnectionNonActiveTimeout() int {
 }
 
 func (insideOptions *InsideOptions) GetLearnerSenderSendQps() int {
-	if iinsideOptions.isLargeBufferMode {
+	if insideOptions.isLargeBufferMode {
 		return 10000 / insideOptions.groupCount
 	}
 
@@ -170,9 +170,14 @@ func (insideOptions *InsideOptions) GetLearnerSenderSendQps() int {
 }
 
 func (insideOptions *InsideOptions) GetCleanerDeleteQps() int {
-	if iinsideOptions.isLargeBufferMode {
+	if insideOptions.isLargeBufferMode {
 		return 30000 / insideOptions.groupCount
 	}
 
 	return 300000 / insideOptions.groupCount
+}
+
+// TODO
+func (insideOptions *InsideOptions) GetMaxCommitTimeoutMs() uint32{
+	return 5000
 }

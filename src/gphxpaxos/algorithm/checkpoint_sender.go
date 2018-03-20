@@ -1,191 +1,238 @@
 package algorithm
 
 import (
+	"sync"
+	"log"
+	"time"
 	"gphxpaxos/config"
-	"io/ioutil"
-	log "github.com/sirupsen/logrus"
-	"os"
-	"strings"
-	"fmt"
 	"gphxpaxos/logstorage"
-	"gphxpaxos/comm"
 )
 
-type CheckpointReceiver struct {
-	config        *config.Config
-	logStorage    logstorage.LogStorage
-	senderNodeId  uint64
-	uuid          uint64
-	sequence      uint64
-	hasInitDirMap map[string]bool
+type LearnerSender struct {
+	config          *config.Config
+	learner         *Learner
+	paxosLog        *logstorage.PaxosLog
+	isSending       bool
+	beginInstanceID uint64
+	sendToNodeID    uint64
+	isConfirmed     bool
+	ackInstanceID   uint64
+	absLastAckTime  uint64
+	absLastSendTime uint64
+	isEnd           bool
+	isStart         bool
+	mutex           sync.Mutex
 }
 
-func NewCheckpointReceiver(config *config.Config, logStorage *logstorage.LogStorage) *CheckpointReceiver {
-	ckRver := &CheckpointReceiver{
-		config:     config,
-		logStorage: logStorage,
+func NewLearnerSender(instance *Instance, learner *Learner) *LearnerSender {
+	sender := &LearnerSender{
+		config:   instance.config,
+		learner:  learner,
+		paxosLog: instance.paxosLog,
+		isEnd:    false,
+		isStart:  false,
 	}
 
-	ckRver.Reset()
+	sender.SendDone()
 
-	return ckRver
+	return sender
 }
 
-func (checkpointReceiver *CheckpointReceiver) Reset() {
-	checkpointReceiver.hasInitDirMap = make(map[string]bool, 0)
-	checkpointReceiver.senderNodeId = comm.NULL_NODEID
-	checkpointReceiver.uuid = 0
-	checkpointReceiver.sequence = 0
+func (self *LearnerSender) Start() {
+	util.StartRoutine(self.main)
 }
 
-func (checkpointReceiver *CheckpointReceiver) NewReceiver(senderNodeId uint64, uuid uint64) error {
-	err := checkpointReceiver.ClearCheckpointTmp()
-	if err != nil {
-		return err
-	}
-
-	err = checkpointReceiver.logStorage.ClearAllLog(checkpointReceiver.config.GetMyGroupId())
-	if err != nil {
-		return err
-	}
-
-	checkpointReceiver.hasInitDirMap = make(map[string]bool, 0)
-	checkpointReceiver.senderNodeId = senderNodeId
-	checkpointReceiver.uuid = uuid
-	checkpointReceiver.sequence = 0
-
-	return nil
+func (self *LearnerSender) Stop() {
+	self.isEnd = true
 }
 
-func (checkpointReceiver *CheckpointReceiver) ClearCheckpointTmp() error {
-	logStoragePath, _ := checkpointReceiver.logStorage.GetLogStorageDirPath(checkpointReceiver.config.GetMyGroupId())
-	files, err := ioutil.ReadDir(logStoragePath)
+func (self *LearnerSender) main() {
+	self.isStart = true
 
-	for _, file := range files {
-		if strings.Contains(file.Name(), "cp_tmp_") {
-			err = os.Remove(logStoragePath + "/" + file.Name())
-			if err != nil {
-				return err
-			}
+	for {
+		self.WaitToSend()
+
+		if self.isEnd {
+			return
 		}
-	}
 
-	return nil
+		self.SendLearnedValue(self.beginInstanceID, self.sendToNodeID)
+
+		self.SendDone()
+	}
 }
 
-func (checkpointReceiver *CheckpointReceiver) IsReceiverFinish(senderNodeId uint64, uuid uint64, endSequence uint64) bool {
-	if senderNodeId != checkpointReceiver.senderNodeId {
+func (self *LearnerSender) ReleshSending() {
+	self.absLastSendTime = util.NowTimeMs()
+}
+
+func (self *LearnerSender) IsImSending() bool {
+	if !self.isSending {
 		return false
 	}
 
-	if uuid != checkpointReceiver.uuid {
-		return false
+	nowTime := util.NowTimeMs()
+	var passTime uint64 = 0
+	if nowTime > self.absLastSendTime {
+		passTime = nowTime - self.absLastSendTime
 	}
 
-	if endSequence != checkpointReceiver.sequence {
+	if passTime >= common.GetLeanerSenderPrepareTimeoutMs() {
 		return false
 	}
 
 	return true
 }
 
-func (checkpointReceiver *CheckpointReceiver) GetTmpDirPath(smid int32) string {
-	logStoragePath, _ := checkpointReceiver.logStorage.GetLogStorageDirPath(checkpointReceiver.config.GetMyGroupId())
-	return fmt.Sprintf("$s/cp_tmp_%d", logStoragePath, smid)
+func (self *LearnerSender) CheckAck(sendInstanceId uint64) bool {
+	if sendInstanceId < self.ackInstanceID {
+		log.Info("Already catch up, ack instanceid %d now send instanceid %d",
+			self.ackInstanceID, sendInstanceId)
+		return false
+	}
+
+	for sendInstanceId > self.ackInstanceID+common.GetLeanerSender_Ack_Lead() {
+		nowTime := util.NowTimeMs()
+		var passTime uint64 = 0
+		if nowTime > self.absLastAckTime {
+			passTime = nowTime - self.absLastAckTime
+		}
+
+		if passTime >= common.GetLeanerSender_Ack_TimeoutMs() {
+			log.Error("Ack timeout, last acktime %d now send instanceid %d",
+				self.absLastAckTime, sendInstanceId)
+			return false
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	return true
 }
 
-func (checkpointReceiver *CheckpointReceiver) InitFilePath(filePath string) (string, error) {
-	newFilePath := "/" + filePath + "/"
-	dirList := make([]string, 0)
+func (self *LearnerSender) Prepare(beginInstanceId uint64, sendToNodeId uint64) bool {
+	self.mutex.Lock()
 
-	dirName := ""
-	for i := 0; i < len(newFilePath); i++ {
-		if newFilePath[i] == '/' {
-			if len(dirName) > 0 {
-				dirList = append(dirList, dirName)
-			}
+	prepareRet := false
+	if !self.IsImSending() && !self.isConfirmed {
+		prepareRet = true
 
-			dirName = ""
-		} else {
-			dirName += fmt.Sprintf("%c", newFilePath[i])
+		self.isSending = true
+		self.absLastSendTime = util.NowTimeMs()
+		self.absLastAckTime = self.absLastSendTime
+		self.beginInstanceID = beginInstanceId
+		self.ackInstanceID = beginInstanceId
+		self.sendToNodeID = sendToNodeId
+	}
+
+	self.mutex.Unlock()
+	return prepareRet
+}
+
+func (self *LearnerSender) Confirm(beginInstanceId uint64, sendToNodeId uint64) bool {
+	self.mutex.Lock()
+
+	confirmRet := false
+	if self.IsImSending() && !self.isConfirmed {
+		if self.beginInstanceID == beginInstanceId && self.sendToNodeID == sendToNodeId {
+			confirmRet = true
+			self.isConfirmed = true
 		}
 	}
 
-	formatFilePath := "/"
-	for i, dir := range dirList {
-		if i+1 == len(dirList) {
-			formatFilePath += dir
-		} else {
-			formatFilePath += dir + "/"
-			_, exist := checkpointReceiver.hasInitDirMap[formatFilePath]
-			if !exist {
-				err := checkpointReceiver.CreateDir(formatFilePath)
-				if err != nil {
-					return "", err
-				}
+	self.mutex.Unlock()
+	return confirmRet
+}
 
-				checkpointReceiver.hasInitDirMap[formatFilePath] = true
+func (self *LearnerSender) Ack(ackInstanceId uint64, fromNodeId uint64) {
+	self.mutex.Lock()
+	if self.IsImSending() && self.isConfirmed {
+		if self.sendToNodeID == fromNodeId {
+			if self.ackInstanceID > self.ackInstanceID {
+				self.ackInstanceID = ackInstanceId
+				self.absLastAckTime = util.NowTimeMs()
 			}
 		}
 	}
-
-	log.Debug("ok, format filepath %s", formatFilePath)
-	return formatFilePath, nil
+	self.mutex.Unlock()
 }
 
-func (checkpointReceiver *CheckpointReceiver) CreateDir(dirPath string) error {
-	_, err := os.Stat(dirPath)
-	if os.IsNotExist(err) {
-		return os.Mkdir(dirPath, os.ModeDir)
+func (self *LearnerSender) WaitToSend() {
+	self.mutex.Lock()
+
+	for !self.isConfirmed {
+		time.Sleep(100 * time.Millisecond)
+		if self.isEnd {
+			break
+		}
 	}
 
-	return nil
+	self.mutex.Unlock()
 }
 
-func (checkpointReceiver *CheckpointReceiver) ReceiveCheckpoint(ckMsg *comm.CheckpointMsg) error {
-	if ckMsg.GetNodeID() != checkpointReceiver.senderNodeId || ckMsg.GetUUID() != checkpointReceiver.uuid {
-		return comm.ErrInvalidMsg
-	}
+func (self *LearnerSender) SendLearnedValue(beginInstanceId uint64, sendToNodeId uint64) {
+	log.Info("BeginInstanceID %d SendToNodeID %d", beginInstanceId, sendToNodeId)
 
-	if ckMsg.GetSequence() == checkpointReceiver.sequence {
-		log.Error("msg already received, msg sequence %d receiver sequence %d", ckMsg.GetSequence(), checkpointReceiver.sequence)
-		return nil
-	}
+	sendInstanceId := beginInstanceId
 
-	if ckMsg.GetSequence() != checkpointReceiver.sequence+1 {
-		log.Error("msg sequence wrong, msg sequence %d receiver sequence %d", ckMsg.GetSequence(), checkpointReceiver.sequence)
-		return comm.ErrInvalidMsg
+	sendQps := common.GetLearnerSenderSendQps()
+	var sleepMs uint64 = 1
+	if sendQps > 1000 {
+		sleepMs = sendQps/1000 + 1
 	}
+	var sendInterval uint64 = sleepMs
 
-	filePath := checkpointReceiver.GetTmpDirPath(ckMsg.GetSMID()) + "/" + ckMsg.GetFilePath()
-	formatFilePath, err := checkpointReceiver.InitFilePath(filePath)
+	var sendCnt uint64 = 0
+	var lastCksum uint32
+	for sendInstanceId < self.learner.GetInstanceId() {
+		err := self.SendOne(sendInstanceId, sendToNodeId, &lastCksum)
+		if err != nil {
+			log.Error("SendOne fail, SendInstanceID %d SendToNodeID %d error %v",
+				sendInstanceId, sendToNodeId, err)
+			return
+		}
+
+		if !self.CheckAck(sendInstanceId) {
+			break
+		}
+
+		sendCnt++
+		sendInstanceId++
+		self.ReleshSending()
+
+		if sendCnt >= sendInterval {
+			sendCnt = 0
+			time.Sleep(time.Duration(sleepMs) * time.Microsecond)
+		}
+	}
+}
+
+func (self *LearnerSender) SendOne(sendInstanceId uint64, sendToNodeId uint64, lastCksum *uint32) error {
+	state, err := self.paxosLog.ReadState(sendInstanceId)
 	if err != nil {
 		return err
 	}
 
-	file, err := os.Open(formatFilePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
+	ballot := NewBallotNumber(state.GetAcceptedID(), state.GetAcceptedNodeID())
 
-	offset, err := file.Seek(0, os.SEEK_END)
-	if err != nil {
-		return err
-	}
+	err = self.learner.SendLearnValue(sendToNodeId, sendInstanceId, *ballot,
+		state.GetAcceptedValue(), *lastCksum, true)
 
-	if uint64(offset) != ckMsg.GetOffset() {
-		log.Error("wrong msg, file offset %d msg offset %d", offset, ckMsg.GetOffset())
-		return comm.ErrInvalidMsg
-	}
+	*lastCksum = state.GetChecksum()
 
-	writeLen, err := file.Write(ckMsg.GetBuffer())
-	if err != nil || writeLen != len(ckMsg.GetBuffer()) {
-		log.Error("write fail, write len %d", writeLen)
-		return comm.ErrWriteFileFail
-	}
+	return err
+}
 
-	checkpointReceiver.sequence += 1
-	log.Debug("end ok, write len %d", writeLen)
-	return nil
+func (self *LearnerSender) SendDone() {
+	self.mutex.Lock()
+
+	self.isSending = false
+	self.isConfirmed = false
+	self.beginInstanceID = common.INVALID_INSTANCEID
+	self.sendToNodeID = common.NULL_NODEID
+	self.absLastAckTime = 0
+	self.ackInstanceID = 0
+	self.absLastSendTime = 0
+
+	self.mutex.Unlock()
 }

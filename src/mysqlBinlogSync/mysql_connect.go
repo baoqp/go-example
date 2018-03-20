@@ -144,9 +144,9 @@ type Connection struct {
 	*InternalConn
 	*HandshakePacket
 
-	user      string
-	password  string
-	db        string
+	user     string
+	password string
+	db       string
 
 	TLSConfig *tls.Config
 }
@@ -210,11 +210,11 @@ func (connection *Connection) handshake() error {
 
 	// 使用前一步读取的salt，加密账号密码，发送给mysql server进行验证
 	authPacket := &AuthPacket{
-		capabilityFlags:capability,
-		salt:connection.salt,
-		user:connection.user,
-		passwd:connection.password,
-		dbName:connection.db,
+		capabilityFlags: capability,
+		salt:            connection.salt,
+		user:            connection.user,
+		passwd:          connection.password,
+		dbName:          connection.db,
 	}
 
 	data, _ = authPacket.write()
@@ -223,10 +223,44 @@ func (connection *Connection) handshake() error {
 		connection.Close()
 		return err
 	}
+	var retPacket *RetPacket
+	if retPacket, err = connection.readRet(); err != nil {
+		connection.Close()
+		return err
+	}
 
-
+	if !retPacket.isOk {
+		connection.Close()
+		return fmt.Errorf("auth failed, errorCode:%d, errorMsg:%s",
+			retPacket.ErrPacket.errorCode, retPacket.ErrPacket.errorMessage)
+	}
 
 	return nil
+}
+
+func (connection *Connection) readRet() (*RetPacket, error) {
+	data, err := connection.ReadPacket()
+	if err != nil {
+		return nil, err
+	}
+
+	retPacket := &RetPacket{}
+	if data[0] == OK_HEADER {
+		retPacket.isOk = true
+		okPacket := &OKPacket{}
+		_ = okPacket.read(data)
+		retPacket.OKPacket = okPacket
+		return retPacket, nil
+	} else if data[0] == ERR_HEADER {
+		retPacket.isOk = false
+		errPacket := &ErrPacket{}
+		_ = errPacket.read(data)
+		retPacket.ErrPacket = errPacket
+		return retPacket, nil
+	} else {
+		return nil, errors.New("invalid ok/err packet")
+	}
+
 }
 
 func Connect(addr string, user string, password string, dbName string) (*Connection, error) {
@@ -246,7 +280,6 @@ func Connect(addr string, user string, password string, dbName string) (*Connect
 	c.db = dbName
 
 	//c.charset = DEFAULT_CHARSET
-
 
 	if err = c.handshake(); err != nil {
 		return nil, err

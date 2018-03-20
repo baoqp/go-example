@@ -25,8 +25,6 @@ func NewHandshakePacket() *HandshakePacket {
 
 func (handshakePacket *HandshakePacket) read(data []byte) error {
 
-	fmt.Println(data)
-
 	handshakePacket.protocolVersion = data[0]
 
 	if handshakePacket.protocolVersion < MinProtocolVersion {

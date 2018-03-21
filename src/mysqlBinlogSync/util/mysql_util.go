@@ -1,6 +1,7 @@
-package mysqlBinlogSync
+package util
 
 import "crypto/sha1"
+
 
 func EncodePassword(scramble, password []byte) []byte {
 	if len(password) == 0 {
@@ -30,6 +31,7 @@ func EncodePassword(scramble, password []byte) []byte {
 	}
 	return scramble
 }
+
 
 func LengthEncodedInt(b []byte) (num uint64, isNull bool, n int) {
 	switch b[0] {
@@ -67,3 +69,5 @@ func LengthEncodedInt(b []byte) (num uint64, isNull bool, n int) {
 	n = 1
 	return
 }
+
+

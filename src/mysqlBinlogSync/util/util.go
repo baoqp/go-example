@@ -1,4 +1,4 @@
-package mysqlBinlogSync
+package util
 
 import (
 	"time"

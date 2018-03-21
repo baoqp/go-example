@@ -1,4 +1,4 @@
-package mysqlBinlogSync
+package conn
 
 import (
 	"net"
@@ -11,12 +11,13 @@ import (
 	"strings"
 	"crypto/tls"
 	log "github.com/sirupsen/logrus"
+	"mysqlBinlogSync/packet"
+	"mysqlBinlogSync/comm"
 )
 
 var (
 	ErrBadConn       = errors.New("connection was bad")
-	ErrMalformPacket = errors.New("Malform packet error")
-
+	ErrMalformPacket = errors.New("malform packet error")
 	ErrTxDone = errors.New("sql: Transaction has already been committed or rolled back")
 )
 
@@ -38,6 +39,7 @@ func (c *InternalConn) ReadPacket() ([]byte, error) {
 	var buf bytes.Buffer
 
 	if err := c.ReadPacketTo(&buf); err != nil {
+
 		return nil, err
 	} else {
 		return buf.Bytes(), nil
@@ -46,6 +48,7 @@ func (c *InternalConn) ReadPacket() ([]byte, error) {
 }
 
 func (c *InternalConn) ReadPacketTo(w io.Writer) error {
+
 	header := []byte{0, 0, 0, 0}
 
 	if _, err := io.ReadFull(c.br, header); err != nil {
@@ -71,7 +74,7 @@ func (c *InternalConn) ReadPacketTo(w io.Writer) error {
 	} else if n != int64(length) {
 		return ErrBadConn
 	} else {
-		if length < MaxPayloadLen {
+		if length < comm.MaxPayloadLen {
 			return nil
 		}
 
@@ -87,21 +90,21 @@ func (c *InternalConn) ReadPacketTo(w io.Writer) error {
 func (c *InternalConn) WritePacket(data []byte) error {
 	length := len(data) - 4
 
-	for length >= MaxPayloadLen {
+	for length >= comm.MaxPayloadLen {
 		data[0] = 0xff
 		data[1] = 0xff
 		data[2] = 0xff
 
 		data[3] = c.Sequence
 
-		if n, err := c.Write(data[:4+MaxPayloadLen]); err != nil {
+		if n, err := c.Write(data[:4+comm.MaxPayloadLen]); err != nil {
 			return ErrBadConn
-		} else if n != (4 + MaxPayloadLen) {
+		} else if n != (4 + comm.MaxPayloadLen) {
 			return ErrBadConn
 		} else {
 			c.Sequence++
-			length -= MaxPayloadLen
-			data = data[MaxPayloadLen:]
+			length -= comm.MaxPayloadLen
+			data = data[comm.MaxPayloadLen:]
 		}
 	}
 
@@ -127,7 +130,7 @@ func (c *InternalConn) ResetSequence() {
 func (c *InternalConn) Close() error {
 	c.Sequence = 0
 	if c != nil {
-		return c.Close()
+		return c.Conn.Close()
 	}
 	return nil
 }
@@ -142,7 +145,7 @@ func getNetProto(addr string) string {
 
 type Connection struct {
 	*InternalConn
-	*HandshakePacket
+	*packet.HandshakePacket
 
 	user     string
 	password string
@@ -158,30 +161,30 @@ func (connection *Connection) handshake() error {
 		return err
 	}
 
-	if data[0] == ERR_HEADER {
+	if data[0] == comm.ERR_HEADER {
 		return errors.New("read initial handshake error")
 	}
 
 	// 读取mysql server发来的握手消息
-	handshakePacket := NewHandshakePacket()
-	if err = handshakePacket.read(data); err != nil {
+	handshakePacket := packet.NewHandshakePacket()
+	if err = handshakePacket.Read(data); err != nil {
 		connection.Close()
 		return err
 	}
 	connection.HandshakePacket = handshakePacket
 
 	// TODO https://dev.mysql.com/doc/internals/en/capability-flags.html
-	capability := CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION |
-		CLIENT_LONG_PASSWORD | CLIENT_TRANSACTIONS | CLIENT_LONG_FLAG
+	capability := comm.CLIENT_PROTOCOL_41 | comm.CLIENT_SECURE_CONNECTION |
+		comm.CLIENT_LONG_PASSWORD | comm.CLIENT_TRANSACTIONS | comm.CLIENT_LONG_FLAG
 
-	capability &= connection.capabilityFlags
+	capability &= connection.CapabilityFlags
 
 	// SSL Connection
 	// https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::SSLRequest
 	if connection.TLSConfig != nil {
 
-		capability |= CLIENT_PLUGIN_AUTH
-		capability |= CLIENT_SSL
+		capability |= comm.CLIENT_PLUGIN_AUTH
+		capability |= comm.CLIENT_SSL
 
 		data = make([]byte, 32+4)
 
@@ -191,7 +194,7 @@ func (connection *Connection) handshake() error {
 		data[6] = byte(capability >> 16)
 		data[7] = byte(capability >> 24)
 		// max-packet size ignore
-		data[12] = byte(DEFAULT_COLLATION_ID)
+		data[12] = byte(comm.DEFAULT_COLLATION_ID)
 
 		if err := connection.WritePacket(data); err != nil {
 			return err
@@ -209,53 +212,56 @@ func (connection *Connection) handshake() error {
 	}
 
 	// 使用前一步读取的salt，加密账号密码，发送给mysql server进行验证
-	authPacket := &AuthPacket{
-		capabilityFlags: capability,
-		salt:            connection.salt,
-		user:            connection.user,
-		passwd:          connection.password,
-		dbName:          connection.db,
+	authPacket := &packet.AuthPacket{
+		CapabilityFlags: capability,
+		Salt:            connection.Salt,
+		User:            connection.user,
+		Passwd:          connection.password,
+		DBName:          connection.db,
 	}
 
-	data, _ = authPacket.write()
+	data, _ = authPacket.Write()
 
 	if err = connection.WritePacket(data); err != nil {
 		connection.Close()
 		return err
 	}
-	var retPacket *RetPacket
-	if retPacket, err = connection.readRet(); err != nil {
+
+
+	var retPacket *packet.RetPacket
+	if retPacket, err = connection.ReadRet(); err != nil {
 		connection.Close()
 		return err
 	}
 
-	if !retPacket.isOk {
+	if !retPacket.IsOk {
 		connection.Close()
 		return fmt.Errorf("auth failed, errorCode:%d, errorMsg:%s",
-			retPacket.ErrPacket.errorCode, retPacket.ErrPacket.errorMessage)
+			retPacket.ErrPacket.ErrorCode, retPacket.ErrPacket.ErrorMessage)
 	}
 
 	return nil
 }
 
-func (connection *Connection) readRet() (*RetPacket, error) {
+func (connection *Connection) ReadRet() (*packet.RetPacket, error) {
 	data, err := connection.ReadPacket()
 	if err != nil {
 		return nil, err
 	}
 
-	retPacket := &RetPacket{}
-	if data[0] == OK_HEADER {
-		retPacket.isOk = true
-		okPacket := &OKPacket{}
-		_ = okPacket.read(data)
+	retPacket := &packet.RetPacket{}
+	if data[0] == comm.OK_HEADER {
+		retPacket.IsOk = true
+		okPacket := &packet.OKPacket{}
+		_ = okPacket.Read(data)
 		retPacket.OKPacket = okPacket
 		return retPacket, nil
-	} else if data[0] == ERR_HEADER {
-		retPacket.isOk = false
-		errPacket := &ErrPacket{}
-		_ = errPacket.read(data)
+	} else if data[0] == comm.ERR_HEADER {
+		retPacket.IsOk = false
+		errPacket := &packet.ErrPacket{}
+		_ = errPacket.Read(data)
 		retPacket.ErrPacket = errPacket
+		fmt.Println(errPacket)
 		return retPacket, nil
 	} else {
 		return nil, errors.New("invalid ok/err packet")

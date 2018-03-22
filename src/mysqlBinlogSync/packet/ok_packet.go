@@ -36,12 +36,9 @@ func (okPacket *OKPacket) Read(data []byte) error {
 	}
 
 	// CLIENT_SESSION_TRACK is not supported
-	if  okPacket.CapabilityFlags & comm.CLIENT_SESSION_TRACK > 0 {
+	infoEnd := bytes.IndexByte(data, 0x00) // serverVersion 以00结尾
+	okPacket.Info = string(data[:infoEnd])
 
-	} else {
-		infoEnd := bytes.IndexByte(data, 0x00) // serverVersion 以00结尾
-		okPacket.Info = string(data[:infoEnd])
-	}
 
 	return nil
 }

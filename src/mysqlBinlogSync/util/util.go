@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"math/rand"
 	"hash/crc32"
+	"runtime"
 )
 
 func Rand(up int) int {
@@ -106,4 +107,13 @@ func Inet_addr(ipaddr string) uint32 {
 	ip4, _ = strconv.ParseUint(ip[3], 10, 8)
 	ret = uint32(ip4)<<24 + uint32(ip3)<<16 + uint32(ip2)<<8 + uint32(ip1)
 	return ret
+}
+
+
+
+//打印调用栈
+func Pstack() string {
+	buf := make([]byte, 1024)
+	n := runtime.Stack(buf, false)
+	return string(buf[0:n])
 }

@@ -1,14 +1,13 @@
-package command
+package binlog
 
 import (
-	"mysqlBinlogSync/binlog"
 	"mysqlBinlogSync/comm"
 	"mysqlBinlogSync/util"
 )
 
 // https://dev.mysql.com/doc/internals/en/com-binlog-dump.html
 type ComBinlogDump struct {
-	*binlog.Position
+	Position
 	Flags uint16
 	ServerId uint32
 }

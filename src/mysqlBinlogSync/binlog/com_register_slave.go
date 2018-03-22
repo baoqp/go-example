@@ -1,9 +1,9 @@
-package command
+package binlog
 
 import (
 	"mysqlBinlogSync/comm"
 	"mysqlBinlogSync/util"
-	"encoding/binary"
+
 )
 
 // https://dev.mysql.com/doc/internals/en/com-register-slave.html

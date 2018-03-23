@@ -78,7 +78,7 @@ func (bs *BinlogSyncer) startInfluxStream() *BinlogStreamer {
 	bs.status = Running
 	s := newBinlogStreamer()
 	bs.wg.Add(1)
-	bs.onStream(s)
+	go bs.onStream(s)
 	return s
 }
 
@@ -174,6 +174,7 @@ func (bs *BinlogSyncer) parseEvent(s *BinlogStreamer, data []byte) error {
 		// Some events like FormatDescriptionEvent return 0, ignore.
 		bs.nextPos.Pos = e.Header.LogPos
 	}
+
 	switch event := e.Event.(type) {
 	case *RotateEvent:
 		bs.nextPos.Name = string(event.NextLogName)

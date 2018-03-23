@@ -153,6 +153,22 @@ func (e *RotateEvent) Write(w io.Writer) {
 	fmt.Fprintln(w)
 }
 
+
+//----------------------------------XIDEvent----------------------------------------------//
+type XIDEvent struct {
+	XID uint64
+}
+
+func (e *XIDEvent) Read(data []byte) error {
+	e.XID = binary.LittleEndian.Uint64(data)
+	return nil
+}
+
+func (e *XIDEvent) Write(w io.Writer) {
+	fmt.Fprintf(w, "XID: %d ", e.XID)
+	fmt.Fprintln(w)
+}
+
 //----------------------------------QueryEvent----------------------------------------------//
 // https://dev.mysql.com/doc/internals/en/query-event.html
 type QueryEvent struct {
@@ -218,6 +234,7 @@ type TableMapEvent struct {
 	ColumnType  []byte
 	ColumnMeta  []uint16
 
+
 	//len = (ColumnCount + 7) / 8   len=(column_count + 8) / 7 TODO ???
 	NullBitmap []byte
 }
@@ -277,7 +294,6 @@ func (e *TableMapEvent) Read(data []byte) error {
 	return nil
 }
 
-// TODO ???
 func bitmapByteSize(columnCount int) int {
 	return int(columnCount+7) / 8
 }
@@ -325,7 +341,6 @@ func bitmapByteSize(columnCount int) int {
 	MYSQL_TYPE_LONG_BLOB
 */
 // ColumnType 每列的类型，每一列用一个byte表示
-// TODO metaInfo有啥用???
 func (e *TableMapEvent) decodeMeta(data []byte) error {
 	pos := 0
 	e.ColumnMeta = make([]uint16, e.ColumnCount)
@@ -1019,7 +1034,7 @@ func (e *RowsEvent) Write(w io.Writer) {
 
 	fmt.Fprintf(w, "Values:; ")
 	for _, rows := range e.Rows {
-		fmt.Fprintf(w, "--; ")
+		fmt.Fprintf(w, "--:")
 		for j, d := range rows {
 			if _, ok := d.([]byte); ok {
 				fmt.Fprintf(w, "%d:%q; ", j, d)

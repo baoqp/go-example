@@ -89,6 +89,8 @@ func (parser *EventParser) parseEvent(data []byte, header *EventHeader) (Event, 
 			e = &RotateEvent{}
 		case QUERY_EVENT:
 			e = &QueryEvent{}
+		case XID_EVENT: // xid是提交动作
+			e = &XIDEvent{}
 		case TABLE_MAP_EVENT:
 			tme := &TableMapEvent{}
 			if parser.format.EventTypeHeaderLengths[TABLE_MAP_EVENT-1] == 6 {

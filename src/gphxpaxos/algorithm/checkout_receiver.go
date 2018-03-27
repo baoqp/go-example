@@ -8,20 +8,20 @@ import (
 	"os"
 	"strings"
 	"fmt"
-	"gphxpaxos/logstorage"
+	"gphxpaxos/storage"
 	"gphxpaxos/comm"
 )
 
 type CheckpointReceiver struct {
 	config        *config.Config
-	logStorage    logstorage.LogStorage
+	logStorage    storage.LogStorage
 	senderNodeId  uint64
 	uuid          uint64
 	sequence      uint64
 	hasInitDirMap map[string]bool
 }
 
-func NewCheckpointReceiver(config *config.Config, logStorage *logstorage.LogStorage) *CheckpointReceiver {
+func NewCheckpointReceiver(config *config.Config, logStorage storage.LogStorage) *CheckpointReceiver {
 	ckRver := &CheckpointReceiver{
 		config:     config,
 		logStorage: logStorage,

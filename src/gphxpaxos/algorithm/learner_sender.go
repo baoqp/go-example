@@ -5,7 +5,7 @@ import (
 	"gphxpaxos/config"
 	"sync"
 	log "github.com/sirupsen/logrus"
-	"gphxpaxos/logstorage"
+	"gphxpaxos/storage"
 	"gphxpaxos/util"
 	"gphxpaxos/comm"
 )
@@ -13,7 +13,7 @@ import (
 type LearnerSender struct {
 	config          *config.Config
 	learner         *Learner
-	paxosLog        *logstorage.PaxosLog
+	paxosLog        *storage.PaxosLog
 	isSending       bool
 	beginInstanceID uint64
 	sendToNodeID    uint64

@@ -15,7 +15,6 @@ type InsideOptions struct {
 var once sync.Once
 var insideOptions *InsideOptions
 
-
 func GetInsideOptions() *InsideOptions {
 	once.Do(func() {
 		insideOptions = &InsideOptions{
@@ -90,7 +89,7 @@ func (insideOptions *InsideOptions) GetMaxQueueLen() int {
 	return 10240
 }
 
-func (insideOptions *InsideOptions) GetAskforLearnerval() int {
+func (insideOptions *InsideOptions) GetAskforLearnInterval() int {
 	if !insideOptions.isIMFollower {
 		if insideOptions.isLargeBufferMode {
 			return 50000 + util.Rand(10000)
@@ -106,7 +105,7 @@ func (insideOptions *InsideOptions) GetAskforLearnerval() int {
 	}
 }
 
-func (insideOptions *InsideOptions) GetLearnerReceiverAckLead() int {
+func (insideOptions *InsideOptions) GetLearnerReceiver_Ack_Lead() int {
 	if insideOptions.isLargeBufferMode {
 		return 2
 	}
@@ -121,7 +120,7 @@ func (insideOptions *InsideOptions) GetLearnerSenderPrepareTimeoutMs() int {
 	return 5000
 }
 
-func (insideOptions *InsideOptions) GetLearnerSenderAckTimeoutMs() int {
+func (insideOptions *InsideOptions) GetLearnerSender_Ack_TimeoutMs() int {
 	if insideOptions.isLargeBufferMode {
 		return 6000
 	}
@@ -129,7 +128,7 @@ func (insideOptions *InsideOptions) GetLearnerSenderAckTimeoutMs() int {
 	return 5000
 }
 
-func (insideOptions *InsideOptions) GetLearnerSenderAckLead() int {
+func (insideOptions *InsideOptions) GetLearnerSender_Ack_Lead() int {
 	if insideOptions.isLargeBufferMode {
 		return 5
 	}
@@ -178,6 +177,10 @@ func (insideOptions *InsideOptions) GetCleanerDeleteQps() int {
 }
 
 // TODO
-func (insideOptions *InsideOptions) GetMaxCommitTimeoutMs() uint32{
+func (insideOptions *InsideOptions) GetMaxCommitTimeoutMs() uint32 {
 	return 5000
+}
+
+func (insideOptions *InsideOptions) GetMaxValueSize() int {
+	return 10240
 }

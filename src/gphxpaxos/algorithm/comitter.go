@@ -112,7 +112,7 @@ func (commitContext *CommitContext) setResult(commitret error, instanceId uint64
 	defer commitContext.mutex.Unlock()
 
 	if commitContext.commitEnd || commitContext.instanceId != instanceId {
-		log.Error("[%s]set result error, commitContext instance id %d,msg instance id %d",
+		log.Errorf("[%s]set result error, commitContext instance id %d,msg instance id %d",
 			commitContext.instance.String(), commitContext.instanceId, instanceId)
 		return
 	}

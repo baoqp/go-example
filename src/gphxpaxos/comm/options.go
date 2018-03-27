@@ -3,7 +3,7 @@ package comm
 import (
 	"fmt"
 	"gphxpaxos/util"
-	"gphxpaxos/logstorage"
+	"gphxpaxos/storage"
 	"gphxpaxos/network"
 	"gphxpaxos/node"
 )
@@ -55,19 +55,19 @@ type GroupSMInfo struct {
 type GroupSMInfoList []*GroupSMInfo
 
 type Options struct {
-	LogStorage                   logstorage.LogStorage
-	LogStoragePath               string
-	Sync                         bool
-	SyncInternal                 int
-	NetWork                      network.NetWork
-	GroupCount                   int
-	UseMemebership               bool
-	MyNodeInfo                   *NodeInfo
-	NodeInfoList                 NodeInfoList
-	MembershipChangeCallback     *MembershipChangeCallback
-	MasterChangeCallback         *MasterChangeCallback
-	GroupSMINfoList              GroupSMInfoList
-	FollowerNodeInfoList         FollowerNodeInfoList
+	LogStorage               storage.LogStorage
+	LogStoragePath           string
+	Sync                     bool
+	SyncInternal             int
+	NetWork                  network.NetWork
+	GroupCount               int
+	UseMemebership           bool
+	MyNodeInfo               *NodeInfo
+	NodeInfoList             NodeInfoList
+	MembershipChangeCallback *MembershipChangeCallback
+	MasterChangeCallback     *MasterChangeCallback
+	GroupSMINfoList          GroupSMInfoList
+	FollowerNodeInfoList     FollowerNodeInfoList
 	UseCheckpointReplayer        bool
 	UseBatchPropose              bool
 	OpenChangeValueBeforePropose bool

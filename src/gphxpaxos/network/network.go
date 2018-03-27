@@ -3,6 +3,7 @@ package network
 const (
 	Message_SendType_UDP = 0
 	Message_SendType_TCP = 1
+	Default_SendType =  Message_SendType_TCP
 )
 
 

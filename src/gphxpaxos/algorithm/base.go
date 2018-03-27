@@ -73,17 +73,6 @@ func (ballotNumber *BallotNumber) Reset() {
 }
 
 //-----------------------------------------------Base-------------------------------------------------//
-
-const (
-	BroadcastMessage_Type_RunSelf_First = 1
-	BroadcastMessage_Type_RunSelf_Final = 2
-	BroadcastMessage_Type_RunSelf_None  = 3
-)
-
-var GROUPIDXLEN = binary.Size(int(0))
-var HEADLEN_LEN = binary.Size(uint16(0))
-var CHECKSUM_LEN = binary.Size(uint32(0))
-
 type Base struct {
 	instanceId uint64
 	config     *config.Config
@@ -99,7 +88,7 @@ func init() {
 
 func newBase(instance *Instance) Base {
 	var instanceId uint64 = 1
-	maxInstanceId, err := instance.logStorage.GetMaxInstanceID()
+	maxInstanceId, err := instance.logStorage.GetMaxInstanceId(instance.config.GetMyGroupId())
 	if err == nil {
 		instanceId = maxInstanceId + 1
 	}
@@ -122,7 +111,7 @@ func (base *Base) setInstanceId(instanceId uint64) {
 }
 
 func (base *Base) newInstance() {
-	base.instanceId++
+	base.instanceId ++
 }
 
 func (base *Base) GetLastChecksum() uint32 {
@@ -132,7 +121,7 @@ func (base *Base) GetLastChecksum() uint32 {
 func (base *Base) packPaxosMsg(paxosMsg *comm.PaxosMsg) ([]byte, *comm.Header, error) {
 	body, err := proto.Marshal(paxosMsg)
 	if err != nil {
-		log.Error("paxos msg Marshal fail:%v", err)
+		log.Errorf("paxos msg Marshal fail:%v", err)
 		return nil, nil, err
 	}
 
@@ -142,7 +131,7 @@ func (base *Base) packPaxosMsg(paxosMsg *comm.PaxosMsg) ([]byte, *comm.Header, e
 func (base *Base) packCheckpointMsg(msg *comm.CheckpointMsg) ([]byte, *comm.Header, error) {
 	body, err := proto.Marshal(msg)
 	if err != nil {
-		log.Error("checkpoint msg Marshal fail:%v", err)
+		log.Errorf("checkpoint msg Marshal fail:%v", err)
 		return nil, nil, err
 	}
 
@@ -164,7 +153,7 @@ func (base *Base) packBaseMsg(body []byte, cmd int32) (buffer []byte, header *co
 
 	headerBuf, err := proto.Marshal(header)
 	if err != nil {
-		log.Error("header Marshal fail:%v", err)
+		log.Errorf("header Marshal fail:%v", err)
 		return
 	}
 
@@ -212,7 +201,7 @@ func (base *Base) unpackBaseMsg(buffer []byte, header *comm.Header) (body []byte
 	proto.Unmarshal(buffer[headStartPos:bodyStartPos], header)
 
 	if bodyStartPos + CHECKSUM_LEN > bufferLen {
-		log.Error("no checksum, body start pos %d, buffersize %d", bodyStartPos, bufferLen)
+		log.Errorf("no checksum, body start pos %d, buffersize %d \r\n", bodyStartPos, bufferLen)
 		err = comm.ErrInvalidMsg
 		return
 	}
@@ -222,7 +211,7 @@ func (base *Base) unpackBaseMsg(buffer []byte, header *comm.Header) (body []byte
 
 	calCksum := util.Crc32(0, buffer[:bufferLen-CHECKSUM_LEN], comm.NET_CRC32SKIP)
 	if calCksum != cksum {
-		log.Error("data bring cksum %d not equal to cal cksum %d", cksum, calCksum)
+		log.Errorf("data bring cksum %d not equal to cal cksum %d \r\n", cksum, calCksum)
 		err = comm.ErrInvalidMsg
 		return
 	}
@@ -253,7 +242,7 @@ func (base *Base) sendPaxosMessage(sendToNodeId uint64, msg *comm.PaxosMsg, send
 
 	buffer, _, err := base.packPaxosMsg(msg)
 	if err != nil {
-		log.Error("pack paxos msg error %v", err)
+		log.Errorf("pack paxos msg error %v \r\n", err)
 		return err
 	}
 

@@ -1,238 +1,288 @@
 package algorithm
 
 import (
-	"sync"
-	"log"
 	"time"
 	"gphxpaxos/config"
-	"gphxpaxos/logstorage"
+	"gphxpaxos/checkpoint"
+	log "github.com/sirupsen/logrus"
+	"os"
+	"gphxpaxos/node"
+	"gphxpaxos/util"
+	"math"
+	"gphxpaxos/comm"
 )
 
-type LearnerSender struct {
-	config          *config.Config
-	learner         *Learner
-	paxosLog        *logstorage.PaxosLog
-	isSending       bool
-	beginInstanceID uint64
-	sendToNodeID    uint64
-	isConfirmed     bool
-	ackInstanceID   uint64
-	absLastAckTime  uint64
-	absLastSendTime uint64
-	isEnd           bool
-	isStart         bool
-	mutex           sync.Mutex
+const tmpBufferLen = 102400
+
+type CheckpointSender struct {
+	sendNodeId        uint64
+	config            *config.Config
+	learner           *Learner
+	factory           *node.SMFac
+	ckMnger           *checkpoint.CheckpointManager
+	uuid              uint64
+	sequence          uint64
+	isEnd             bool
+	isEnded           bool
+	ackSequence       uint64
+	absLastAckTime    uint64
+	alreadySendedFile map[string]bool
+	tmpBuffer         []byte
 }
 
-func NewLearnerSender(instance *Instance, learner *Learner) *LearnerSender {
-	sender := &LearnerSender{
-		config:   instance.config,
-		learner:  learner,
-		paxosLog: instance.paxosLog,
-		isEnd:    false,
-		isStart:  false,
+func NewCheckpointSender(sendNodeId uint64, config *config.Config, learner *Learner,
+	factory *node.SMFac,
+	ckmnger *checkpoint.CheckpointManager) *CheckpointSender {
+	cksender := &CheckpointSender{
+		sendNodeId: sendNodeId,
+		config:     config,
+		learner:    learner,
+		factory:    factory,
+		ckMnger:    ckmnger,
+		uuid:       config.GetMyNodeId() ^ learner.GetInstanceId() + uint64(util.Rand(math.MaxInt32)),
+		tmpBuffer:  make([]byte, tmpBufferLen),
 	}
 
-	sender.SendDone()
-
-	return sender
+	util.StartRoutine(cksender.main)
+	return cksender
 }
 
-func (self *LearnerSender) Start() {
-	util.StartRoutine(self.main)
+func (checkpointSender *CheckpointSender) Stop() {
+	if !checkpointSender.isEnded {
+		checkpointSender.isEnd = true
+	}
 }
 
-func (self *LearnerSender) Stop() {
-	self.isEnd = true
+func (checkpointSender *CheckpointSender) IsEnd() bool {
+	return checkpointSender.isEnded
 }
 
-func (self *LearnerSender) main() {
-	self.isStart = true
+func (checkpointSender *CheckpointSender) End() {
+	checkpointSender.isEnd = true
+}
 
-	for {
-		self.WaitToSend()
+func (checkpointSender *CheckpointSender) main() {
+	checkpointSender.absLastAckTime = util.NowTimeMs()
 
-		if self.isEnd {
+	needContinue := false
+	for !checkpointSender.ckMnger.GetRelayer().IsPaused() {
+		if checkpointSender.isEnd {
+			checkpointSender.isEnded = true
 			return
 		}
 
-		self.SendLearnedValue(self.beginInstanceID, self.sendToNodeID)
-
-		self.SendDone()
+		needContinue = true
+		checkpointSender.ckMnger.GetRelayer().Pause()
+		log.Debug("wait replayer pause")
+		util.SleepMs(100)
 	}
+
+	err := checkpointSender.LockCheckpoint()
+	if err == nil {
+		checkpointSender.SendCheckpoint()
+		checkpointSender.UnlockCheckpoint()
+	}
+
+	if needContinue {
+		checkpointSender.ckMnger.GetRelayer().Continue()
+	}
+
+	log.Info("Checkpoint.Sender [END]")
+	checkpointSender.isEnded = true
 }
 
-func (self *LearnerSender) ReleshSending() {
-	self.absLastSendTime = util.NowTimeMs()
-}
+func (checkpointSender *CheckpointSender) LockCheckpoint() error {
+	smList := checkpointSender.factory.GetSMList()
+	lockSmList := make([] node.StateMachine, 0)
 
-func (self *LearnerSender) IsImSending() bool {
-	if !self.isSending {
-		return false
-	}
-
-	nowTime := util.NowTimeMs()
-	var passTime uint64 = 0
-	if nowTime > self.absLastSendTime {
-		passTime = nowTime - self.absLastSendTime
-	}
-
-	if passTime >= common.GetLeanerSenderPrepareTimeoutMs() {
-		return false
-	}
-
-	return true
-}
-
-func (self *LearnerSender) CheckAck(sendInstanceId uint64) bool {
-	if sendInstanceId < self.ackInstanceID {
-		log.Info("Already catch up, ack instanceid %d now send instanceid %d",
-			self.ackInstanceID, sendInstanceId)
-		return false
-	}
-
-	for sendInstanceId > self.ackInstanceID+common.GetLeanerSender_Ack_Lead() {
-		nowTime := util.NowTimeMs()
-		var passTime uint64 = 0
-		if nowTime > self.absLastAckTime {
-			passTime = nowTime - self.absLastAckTime
-		}
-
-		if passTime >= common.GetLeanerSender_Ack_TimeoutMs() {
-			log.Error("Ack timeout, last acktime %d now send instanceid %d",
-				self.absLastAckTime, sendInstanceId)
-			return false
-		}
-
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	return true
-}
-
-func (self *LearnerSender) Prepare(beginInstanceId uint64, sendToNodeId uint64) bool {
-	self.mutex.Lock()
-
-	prepareRet := false
-	if !self.IsImSending() && !self.isConfirmed {
-		prepareRet = true
-
-		self.isSending = true
-		self.absLastSendTime = util.NowTimeMs()
-		self.absLastAckTime = self.absLastSendTime
-		self.beginInstanceID = beginInstanceId
-		self.ackInstanceID = beginInstanceId
-		self.sendToNodeID = sendToNodeId
-	}
-
-	self.mutex.Unlock()
-	return prepareRet
-}
-
-func (self *LearnerSender) Confirm(beginInstanceId uint64, sendToNodeId uint64) bool {
-	self.mutex.Lock()
-
-	confirmRet := false
-	if self.IsImSending() && !self.isConfirmed {
-		if self.beginInstanceID == beginInstanceId && self.sendToNodeID == sendToNodeId {
-			confirmRet = true
-			self.isConfirmed = true
-		}
-	}
-
-	self.mutex.Unlock()
-	return confirmRet
-}
-
-func (self *LearnerSender) Ack(ackInstanceId uint64, fromNodeId uint64) {
-	self.mutex.Lock()
-	if self.IsImSending() && self.isConfirmed {
-		if self.sendToNodeID == fromNodeId {
-			if self.ackInstanceID > self.ackInstanceID {
-				self.ackInstanceID = ackInstanceId
-				self.absLastAckTime = util.NowTimeMs()
-			}
-		}
-	}
-	self.mutex.Unlock()
-}
-
-func (self *LearnerSender) WaitToSend() {
-	self.mutex.Lock()
-
-	for !self.isConfirmed {
-		time.Sleep(100 * time.Millisecond)
-		if self.isEnd {
-			break
-		}
-	}
-
-	self.mutex.Unlock()
-}
-
-func (self *LearnerSender) SendLearnedValue(beginInstanceId uint64, sendToNodeId uint64) {
-	log.Info("BeginInstanceID %d SendToNodeID %d", beginInstanceId, sendToNodeId)
-
-	sendInstanceId := beginInstanceId
-
-	sendQps := common.GetLearnerSenderSendQps()
-	var sleepMs uint64 = 1
-	if sendQps > 1000 {
-		sleepMs = sendQps/1000 + 1
-	}
-	var sendInterval uint64 = sleepMs
-
-	var sendCnt uint64 = 0
-	var lastCksum uint32
-	for sendInstanceId < self.learner.GetInstanceId() {
-		err := self.SendOne(sendInstanceId, sendToNodeId, &lastCksum)
+	var err error
+	for _, sm := range smList {
+		err = sm.LockCheckpointState()
 		if err != nil {
-			log.Error("SendOne fail, SendInstanceID %d SendToNodeID %d error %v",
-				sendInstanceId, sendToNodeId, err)
-			return
-		}
-
-		if !self.CheckAck(sendInstanceId) {
 			break
 		}
+		lockSmList = append(lockSmList, sm)
+	}
 
-		sendCnt++
-		sendInstanceId++
-		self.ReleshSending()
-
-		if sendCnt >= sendInterval {
-			sendCnt = 0
-			time.Sleep(time.Duration(sleepMs) * time.Microsecond)
+	if err != nil {
+		for _, sm := range lockSmList {
+			sm.UnLockCheckpointState()
 		}
 	}
-}
-
-func (self *LearnerSender) SendOne(sendInstanceId uint64, sendToNodeId uint64, lastCksum *uint32) error {
-	state, err := self.paxosLog.ReadState(sendInstanceId)
-	if err != nil {
-		return err
-	}
-
-	ballot := NewBallotNumber(state.GetAcceptedID(), state.GetAcceptedNodeID())
-
-	err = self.learner.SendLearnValue(sendToNodeId, sendInstanceId, *ballot,
-		state.GetAcceptedValue(), *lastCksum, true)
-
-	*lastCksum = state.GetChecksum()
 
 	return err
 }
 
-func (self *LearnerSender) SendDone() {
-	self.mutex.Lock()
+func (checkpointSender *CheckpointSender) UnlockCheckpoint() {
+	smList := checkpointSender.factory.GetSMList()
 
-	self.isSending = false
-	self.isConfirmed = false
-	self.beginInstanceID = common.INVALID_INSTANCEID
-	self.sendToNodeID = common.NULL_NODEID
-	self.absLastAckTime = 0
-	self.ackInstanceID = 0
-	self.absLastSendTime = 0
+	for _, sm := range smList {
+		sm.UnLockCheckpointState()
+	}
+}
 
-	self.mutex.Unlock()
+func (checkpointSender *CheckpointSender) SendCheckpoint() error {
+	learner := checkpointSender.learner
+	err := learner.SendCheckpointBegin(checkpointSender.sendNodeId, checkpointSender.uuid, checkpointSender.sequence,
+		checkpointSender.factory.GetCheckpointInstanceID(checkpointSender.config.GetMyGroupId()))
+	if err != nil {
+		log.Errorf("SendCheckpoint fail: %v \r\n", err)
+		return err
+	}
+
+	checkpointSender.sequence += 1
+
+	smList := checkpointSender.factory.GetSMList()
+	for _, sm := range smList {
+		err = checkpointSender.SendCheckpointForSM(sm)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = learner.SendCheckpointEnd(checkpointSender.sendNodeId, checkpointSender.uuid, checkpointSender.sequence,
+		checkpointSender.factory.GetCheckpointInstanceID(checkpointSender.config.GetMyGroupId()))
+
+	if err != nil {
+		log.Errorf("SendCheckpointEnd fail: %v \r\n", err)
+	}
+
+	return err
+}
+
+func (checkpointSender *CheckpointSender) SendCheckpointForSM(statemachine node.StateMachine) error {
+	var dirPath string
+	var fileList = make([]string, 0)
+
+	err := statemachine.GetCheckpointState(checkpointSender.config.GetMyGroupId(), &dirPath, fileList)
+	if err != nil {
+		return err
+	}
+
+	if len(dirPath) == 0 {
+		return nil
+	}
+
+	if dirPath[len(dirPath)-1] != '/' {
+		dirPath += "/"
+	}
+
+	for _, file := range fileList {
+		err = checkpointSender.SendFile(statemachine, dirPath, file)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (checkpointSender *CheckpointSender) SendFile(statemachine node.StateMachine, dir string, file string) error {
+	path := dir + file
+
+	_, exist := checkpointSender.alreadySendedFile[path]
+	if exist {
+		return nil
+	}
+
+	fd, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+
+	var offset uint64 = 0
+	for {
+		readLen, err := fd.Read(checkpointSender.tmpBuffer)
+
+		if err != nil {
+			fd.Close()
+			return err
+		}
+		if readLen == 0 {
+			break
+		}
+
+		err = checkpointSender.SendBuffer(statemachine.SMID(), statemachine.GetCheckpointInstanceID(checkpointSender.config.GetMyGroupId()),
+			path, offset, checkpointSender.tmpBuffer, readLen)
+		if err != nil {
+			fd.Close()
+			return err
+		}
+
+		if readLen < tmpBufferLen {
+			return nil
+		}
+
+		offset += uint64(readLen)
+	}
+
+	checkpointSender.alreadySendedFile[path] = true
+	fd.Close()
+	return nil
+}
+
+func (checkpointSender *CheckpointSender) SendBuffer(smid int32, ckInstanceId uint64, file string,
+	offser uint64, buffer []byte, bufLen int) error {
+	ckSum := util.Crc32(0, buffer[:bufLen], comm.CRC32_SKIP)
+
+	for {
+		if checkpointSender.isEnd {
+			return nil
+		}
+
+		err := checkpointSender.CheckAck(checkpointSender.sequence)
+		if err != nil {
+			return err
+		}
+
+		err = checkpointSender.learner.SendCheckpoint(checkpointSender.sendNodeId, checkpointSender.uuid, checkpointSender.sequence,
+			ckInstanceId, ckSum, file, smid, offser, buffer)
+		if err != nil {
+			util.SleepMs(30000)
+		} else {
+			checkpointSender.sequence += 1
+			break
+		}
+	}
+
+	return nil
+}
+
+func (checkpointSender *CheckpointSender) Ack(sendNodeId uint64, uuid uint64, sequence uint64) {
+	if sendNodeId != checkpointSender.sendNodeId {
+		return
+	}
+
+	if checkpointSender.uuid != uuid {
+		return
+	}
+
+	if checkpointSender.ackSequence != sequence {
+		return
+	}
+
+	checkpointSender.ackSequence += 1
+	checkpointSender.absLastAckTime = util.NowTimeMs()
+}
+
+func (checkpointSender *CheckpointSender) CheckAck(sendSequence uint64) error {
+	for sendSequence > checkpointSender.ackSequence+100 {
+		now := util.NowTimeMs()
+		var passTime uint64
+		if now > checkpointSender.absLastAckTime {
+			passTime = now - checkpointSender.absLastAckTime
+		}
+
+		if checkpointSender.isEnd {
+
+		}
+
+		if passTime > 200 {
+
+		}
+
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	return nil
 }

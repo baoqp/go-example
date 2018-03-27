@@ -20,9 +20,9 @@ type MemeoryLogStorage struct {
 }
 
 func NewMemoryLogStorage(uri string) *MemeoryLogStorage{
-	memeoryLogStorage := &MemeoryLogStorage{path:uri}
-	memeoryLogStorage.init()
-	return memeoryLogStorage
+	memoryLogStorage := &MemeoryLogStorage{path:uri}
+	memoryLogStorage.init()
+	return memoryLogStorage
 }
 
 func (memoryLogStorage *MemeoryLogStorage) init() {

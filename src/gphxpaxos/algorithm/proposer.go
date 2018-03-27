@@ -7,6 +7,7 @@ import (
 	"gphxpaxos/comm"
 	"github.com/golang/protobuf/proto"
 	"math/rand"
+	"gphxpaxos/network"
 )
 
 const (
@@ -62,7 +63,7 @@ func (proposerState *ProposerState) setStartProposalId(proposalId uint64) {
 
 // 更新proposalId
 func (proposerState *ProposerState) newPrepare() {
-	log.Info("start proposalid %d highestother %d mynodeid %d",
+	log.Infof("start proposalid %d highestother %d mynodeid %d",
 		proposerState.proposalId, proposerState.highestOtherProposalId, proposerState.config.GetMyNodeId())
 
 	// next propose id = max(proposalId, highestOtherProposalId) + 1
@@ -73,7 +74,7 @@ func (proposerState *ProposerState) newPrepare() {
 
 	proposerState.proposalId = maxProposalId + 1
 
-	log.Info("end proposalid %d", proposerState.proposalId)
+	log.Infof("end proposalid %d", proposerState.proposalId)
 }
 
 func (proposerState *ProposerState) AddPreAcceptValue(otherPreAcceptBallot BallotNumber, otherPreAcceptValue []byte) {
@@ -183,7 +184,7 @@ func (proposer *Proposer) NewValue(value []byte, timeOutMs uint32) {
 	proposer.lastStartTimeMs = util.NowTimeMs()
 
 	if proposer.canSkipPrepare && !proposer.wasRejectBySomeone {
-		log.Info("skip prepare,directly start accept")
+		log.Infof("skip prepare,directly start accept")
 		proposer.accept()
 	} else {
 		proposer.prepare(proposer.wasRejectBySomeone)
@@ -199,7 +200,7 @@ func (proposer *Proposer) isTimeout() bool {
 	}
 	if proposer.timeOutMs <= 0 {
 		log.Debug("[%s]instance %d timeout", proposer.instance.String(), proposer.instanceId)
-		proposer.instance.commitctx.setResult(gpaxos.PaxosTryCommitRet_Timeout, proposer.instanceId, []byte(""))
+		proposer.instance.commitctx.setResult(comm.PaxosTryCommitRet_Timeout, proposer.instanceId, []byte(""))
 		return true
 	}
 	proposer.timeOutMs -= uint32(diff)
@@ -226,7 +227,7 @@ func (proposer *Proposer) prepare(needNewBallot bool) {
 		proposer.state.newPrepare()
 	}
 
-	log.Info("[%s]start prepare now.instanceid %d mynodeid %d state.proposal id %d state.valuelen %d new %v",
+	log.Infof("[%s]start prepare now.instanceid %d mynodeid %d state.proposal id %d state.valuelen %d new %v",
 		proposer.instance.String(),proposer.GetInstanceId(), proposer.config.GetMyNodeId(), state.GetProposalId(), len(state.GetValue()), needNewBallot)
 
 	// pack paxos prepare msg and broadcast
@@ -240,7 +241,7 @@ func (proposer *Proposer) prepare(needNewBallot bool) {
 	proposer.msgCounter.StartNewRound()
 	proposer.addPrepareTimer(proposer.lastPrepareTimeoutMs)
 
-	base.broadcastMessage(msg, BroadcastMessage_Type_RunSelf_First)
+	base.broadcastMessage(msg, BroadcastMessage_Type_RunSelf_First, network.Default_SendType)
 }
 
 func (proposer *Proposer) exitAccept() {
@@ -291,15 +292,15 @@ func (proposer *Proposer) addAcceptTimer(timeOutMs uint32) {
 }
 
 func (proposer *Proposer) OnPrepareReply(msg *comm.PaxosMsg) error {
-	log.Info("[%s]OnPrepareReply from %d", proposer.instance.String(), msg.GetNodeID())
+	log.Infof("[%s]OnPrepareReply from %d", proposer.instance.String(), msg.GetNodeID())
 
 	if proposer.state.state != PREPARE {
-		log.Error("[%s]proposer state not PREPARE", proposer.instance.String())
+		log.Errorf("[%s]proposer state not PREPARE", proposer.instance.String())
 		return nil
 	}
 
 	if msg.GetProposalID() != proposer.state.GetProposalId() {
-		log.Error("[%s]msg proposal id %d not same to proposer proposal id",
+		log.Errorf("[%s]msg proposal id %d not same to proposer proposal id",
 			proposer.instance.String(), msg.GetProposalID(), proposer.state.GetProposalId())
 		return nil
 	}
@@ -339,7 +340,7 @@ func (proposer *Proposer) accept() {
 	base := proposer.Base
 	state := proposer.state
 
-	log.Info("[%s]start accept %s", proposer.instance.String(), string(state.GetValue()))
+	log.Infof("[%s]start accept %s", proposer.instance.String(), string(state.GetValue()))
 
 	proposer.exitAccept()
 	proposer.state.setState(ACCEPT)
@@ -357,23 +358,23 @@ func (proposer *Proposer) accept() {
 
 	proposer.addAcceptTimer(proposer.lastAcceptTimeoutMs)
 
-	base.broadcastMessage(msg, BroadcastMessage_Type_RunSelf_Final)
+	base.broadcastMessage(msg, BroadcastMessage_Type_RunSelf_Final, network.Default_SendType)
 }
 
 func (proposer *Proposer) OnAcceptReply(msg *comm.PaxosMsg) error {
 	state := proposer.state
-	log.Info("[%s]START msg.proposalId %d, state.proposalId %d, msg.from %d, rejectby %d",
+	log.Infof("[%s]START msg.proposalId %d, state.proposalId %d, msg.from %d, rejectby %d",
 		proposer.instance.String(), msg.GetProposalID(), state.GetProposalId(), msg.GetNodeID(), msg.GetRejectByPromiseID())
 
 	base := proposer.Base
 
 	if state.state != ACCEPT {
-		log.Error("[%s]proposer state not ACCEPT", proposer.instance.String())
+		log.Errorf("[%s]proposer state not ACCEPT", proposer.instance.String())
 		return nil
 	}
 
 	if msg.GetProposalID() != state.GetProposalId() {
-		log.Error("[%s]msg proposal id %d not same to proposer proposal id",
+		log.Errorf("[%s]msg proposal id %d not same to proposer proposal id",
 			proposer.instance.String(), msg.GetProposalID(), proposer.state.GetProposalId())
 		return nil
 	}
@@ -392,12 +393,12 @@ func (proposer *Proposer) OnAcceptReply(msg *comm.PaxosMsg) error {
 	if msgCounter.IsPassedOnThisRound() {
 		proposer.exitAccept()
 		proposer.learner.ProposerSendSuccess(base.GetInstanceId(), state.GetProposalId())
-		log.Info("[%s]instance %d passed", proposer.instance.String(), msg.GetInstanceID())
+		log.Infof("[%s]instance %d passed", proposer.instance.String(), msg.GetInstanceID())
 	} else {
 		proposer.addAcceptTimer(uint32(rand.Intn(30) + 10))
 	}
 
-	log.Info("OnAcceptReply END")
+	log.Infof("OnAcceptReply END")
 	return nil
 }
 

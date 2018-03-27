@@ -2,11 +2,12 @@ package algorithm
 
 import (
 	"gphxpaxos/config"
-	"gphxpaxos/logstorage"
+	"gphxpaxos/storage"
 	log "github.com/sirupsen/logrus"
 	"gphxpaxos/util"
 	"gphxpaxos/comm"
 	"github.com/golang/protobuf/proto"
+	"gphxpaxos/network"
 )
 
 //----------------------------------------------AcceptorState-------------------------------------------//
@@ -15,12 +16,12 @@ type AcceptorState struct {
 	acceptedNum  *BallotNumber
 	acceptValues []byte
 	checkSum     uint32
-	paxosLog     *logstorage.PaxosLog
+	paxosLog     *storage.PaxosLog
 	config       *config.Config
 	syncTimes    int32
 }
 
-func newAcceptorState(config *config.Config, paxosLog *logstorage.PaxosLog) *AcceptorState {
+func newAcceptorState(config *config.Config, paxosLog *storage.PaxosLog) *AcceptorState {
 	acceptorState := &AcceptorState{
 		config:      config,
 		paxosLog:    paxosLog,
@@ -84,11 +85,11 @@ func (acceptorState *AcceptorState) Persist(instanceid uint64, lastCheckSum uint
 		Checksum:       proto.Uint32(acceptorState.checkSum),
 	}
 
-	var options = logstorage.WriteOptions{
+	var options = storage.WriteOptions{
 		Sync: acceptorState.config.LogSync(),
 	}
 
-	// TODO
+	// TODO 这么写的原因 ??? 不应该每次都刷盘么???
 	if options.Sync {
 		acceptorState.syncTimes++
 		if acceptorState.syncTimes > acceptorState.config.SyncInterval() {
@@ -125,7 +126,7 @@ func (acceptorState *AcceptorState) Load() (uint64, error) {
 	}
 
 	var state comm.AcceptorStateData
-	err = acceptorState.paxosLog.ReadState(myGroupId, instanceid, &state)
+	state, err = acceptorState.paxosLog.ReadState(myGroupId, instanceid)
 	if err != nil {
 		return instanceid, err
 	}
@@ -167,7 +168,7 @@ func NewAcceptor(instance *Instance) *Acceptor {
 func (acceptor *Acceptor) Init() error {
 	instanceId, err := acceptor.state.Load()
 	if err != nil {
-		log.Error("load state fail:%v", err)
+		log.Errorf("load state fail:%v", err)
 		return err
 	}
 
@@ -236,7 +237,7 @@ func (acceptor *Acceptor) onPrepare(msg *comm.PaxosMsg) error {
 
 		err := state.Persist(acceptor.GetInstanceId(), acceptor.Base.GetLastChecksum())
 		if err != nil {
-			log.Error("persist fail, now instanceid %d ret %v", acceptor.GetInstanceId(), err)
+			log.Errorf("persist fail, now instanceid %d ret %v", acceptor.GetInstanceId(), err)
 			return err
 		}
 	} else {
@@ -249,7 +250,7 @@ func (acceptor *Acceptor) onPrepare(msg *comm.PaxosMsg) error {
 	replyNodeId := msg.GetNodeID()
 	log.Info("[%s]end prepare instanceid %d replynodeid %d", acceptor.instance.String(), acceptor.GetInstanceId(), replyNodeId)
 
-	acceptor.Base.sendPaxosMessage(replyNodeId, reply)
+	acceptor.Base.sendPaxosMessage(replyNodeId, reply, network.Default_SendType)
 
 	return nil
 }
@@ -287,7 +288,7 @@ func (acceptor *Acceptor) onAccept(msg *comm.PaxosMsg) error {
 
 		err := state.Persist(acceptor.GetInstanceId(), acceptor.Base.GetLastChecksum())
 		if err != nil {
-			log.Error("persist fail, now instanceid %d ret %v", acceptor.GetInstanceId(), err)
+			log.Errorf("persist fail, now instanceid %d ret %v", acceptor.GetInstanceId(), err)
 			return err
 		}
 	} else {
@@ -300,7 +301,7 @@ func (acceptor *Acceptor) onAccept(msg *comm.PaxosMsg) error {
 	replyNodeId := msg.GetNodeID()
 	log.Info("[%s]end accept instanceid %d replynodeid %d", acceptor.instance.String(), acceptor.GetInstanceId(), replyNodeId)
 
-	acceptor.Base.sendPaxosMessage(replyNodeId, reply)
+	acceptor.Base.sendPaxosMessage(replyNodeId, reply, network.Default_SendType)
 
 	return nil
 }

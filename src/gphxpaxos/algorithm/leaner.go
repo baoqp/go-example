@@ -4,10 +4,12 @@ import (
 	log "github.com/sirupsen/logrus"
 	"gphxpaxos/config"
 	"gphxpaxos/comm"
-	"gphxpaxos/logstorage"
+	"gphxpaxos/storage"
 	"github.com/golang/protobuf/proto"
 	"gphxpaxos/util"
 	"gphxpaxos/checkpoint"
+	"gphxpaxos/node"
+	"gphxpaxos/network"
 )
 
 //-------------------------------------------------LearnerState-----------------------------------------//
@@ -17,7 +19,7 @@ type LearnerState struct {
 	learnedValue []byte
 	isLearned    bool
 	newChecksum  uint32
-	paxosLog     *logstorage.PaxosLog
+	paxosLog     *storage.PaxosLog
 }
 
 func NewLearnerState(instance *Instance) *LearnerState {
@@ -41,7 +43,9 @@ func (learnerState *LearnerState) LearnValueWithoutWrite(instanceId uint64, valu
 	learnerState.newChecksum = checksum
 }
 
-func (learnerState *LearnerState) LearnValue(instanceId uint64, learnedBallot BallotNumber, value []byte, lastChecksum uint32) error {
+func (learnerState *LearnerState) LearnValue(instanceId uint64, learnedBallot BallotNumber,
+	value []byte, lastChecksum uint32) error {
+
 	if instanceId == 0 && lastChecksum == 0 {
 		learnerState.newChecksum = 0
 	} else if len(value) > 0 {
@@ -58,13 +62,14 @@ func (learnerState *LearnerState) LearnValue(instanceId uint64, learnedBallot Ba
 		Checksum:       proto.Uint32(learnerState.newChecksum),
 	}
 
-	options := logstorage.WriteOptions{
+	// TODO ???
+	options := storage.WriteOptions{
 		Sync: false,
 	}
 
 	err := learnerState.paxosLog.WriteState(&options, learnerState.config.GetMyGroupId(), instanceId, &state)
 	if err != nil {
-		log.Error("storage writestate fail, instanceid %d valuelen %d err %v",
+		log.Errorf("storage writestate fail, instanceid %d valuelen %d err %v",
 			instanceId, len(value), err)
 		return err
 	}
@@ -91,246 +96,276 @@ func (learnerState *LearnerState) Init() {
 //-------------------------------------------------Learner-----------------------------------------//
 type Learner struct {
 	Base
-	instance                         *Instance
-	paxosLog                         *logstorage.PaxosLog
-	acceptor                         *Acceptor
-	state                            *LearnerState
-	isImLearning                     bool
-	highestSeenInstanceID            uint64
-	highestSeenInstanceID_fromNodeID uint64
-	lastAckInstanceId                uint64
-	askforlearnNoopTimerID           uint32
-	sender                           *LearnerSender
-	timerThread                      *util.TimerThread
-	ckReceiver                       *CheckpointReceiver
-	ckSender                         *CheckpointSender
-	ckMnger                          *checkpoint.CheckpointManager
-	factory                          *statemachine.StatemachineFactory
+	instance                        *Instance
+	paxosLog                        *storage.PaxosLog
+	acceptor                        *Acceptor
+	state                           *LearnerState
+	isImLearning                    bool
+	highestSeenInstanceID           uint64
+	highestSeenInstanceIDFromNodeID uint64
+	lastAckInstanceId               uint64
+	askforlearnNoopTimerID          uint32
+	sender                          *LearnerSender
+	timerThread                     *util.TimerThread
+	ckReceiver                      *CheckpointReceiver
+	ckSender                        *CheckpointSender
+	ckMnger                         *checkpoint.CheckpointManager
+	factory                         *node.SMFac
 }
 
 func NewLearner(instance *Instance) *Learner {
 	learner := &Learner{
-		Base:                             newBase(instance),
-		paxosLog:                         instance.paxosLog,
-		acceptor:                         instance.acceptor,
-		isImLearning:                     false,
-		highestSeenInstanceID:            0,
-		highestSeenInstanceID_fromNodeID: comm.NULL_NODEID,
-		lastAckInstanceId:                0,
-		state:                            NewLearnerState(instance),
-		instance:                         instance,
-		timerThread:                      instance.timerThread,
-		ckReceiver:                       NewCheckpointReceiver(instance.config, instance.logStorage),
-		ckMnger:                          instance.ckMnger,
-		factory:                          instance.factory,
+		Base:                            newBase(instance),
+		paxosLog:                        instance.paxosLog,
+		acceptor:                        instance.acceptor,
+		isImLearning:                    false,
+		highestSeenInstanceID:           0,
+		highestSeenInstanceIDFromNodeID: comm.NULL_NODEID,
+		lastAckInstanceId:               0,
+		state:                           NewLearnerState(instance),
+		instance:                        instance,
+		timerThread:                     instance.timerThread,
+		ckReceiver:                      NewCheckpointReceiver(instance.config, instance.logStorage),
+		ckMnger:                         instance.ckMnger,
+		factory:                         instance.factory,
 	}
-	learner.sender = NewLearnerSender(instance, learner)
 
+	learner.sender = NewLearnerSender(instance, learner)
 	learner.InitForNewPaxosInstance(false)
 
 	return learner
 }
 
-func (self *Learner) InitForNewPaxosInstance(isMyCommit bool) {
-	self.state.Init()
+func (learner *Learner) InitForNewPaxosInstance(isMyCommit bool) {
+	learner.state.Init()
 }
 
-func (self *Learner) NewInstance(isMyComit bool) {
-	self.Base.newInstance()
-	self.InitForNewPaxosInstance(isMyComit)
-	log.Debug("[%s]now learner instance id %d", self.instance.String(), self.Base.GetInstanceId())
+func (learner *Learner) NewInstance(isMyComit bool) {
+	learner.Base.newInstance()
+	learner.InitForNewPaxosInstance(isMyComit)
+	log.Debug("[%s]now learner instance id %d", learner.instance.String(), learner.Base.GetInstanceId())
 }
 
-func (self *Learner) Init() {
-	self.sender.Start()
+func (learner *Learner) Init() {
+	learner.sender.Start()
 }
 
-func (self *Learner) IsLearned() bool {
-	return self.state.IsLearned()
+func (learner *Learner) IsLearned() bool {
+	return learner.state.IsLearned()
 }
 
-func (self *Learner) GetLearnValue() []byte {
-	return self.state.GetLearnValue()
+func (learner *Learner) GetLearnValue() []byte {
+	return learner.state.GetLearnValue()
 }
 
-func (self *Learner) Stop() {
-	self.sender.Stop()
+func (learner *Learner) Stop() {
+	learner.sender.Stop()
 }
 
-func (self *Learner) IsImLatest() bool {
-	return self.GetInstanceId()+1 >= self.highestSeenInstanceID
+func (learner *Learner) IsImLatest() bool {
+	return learner.GetInstanceId()+1 >= learner.highestSeenInstanceID
 }
 
-func (self *Learner) GetSeenLatestInstanceID() uint64 {
-	return self.highestSeenInstanceID
+func (learner *Learner) GetSeenLatestInstanceID() uint64 {
+	return learner.highestSeenInstanceID
 }
 
-func (self *Learner) SetSeenInstanceID(instanceId uint64, fromNodeId uint64) {
-	if instanceId > self.highestSeenInstanceID {
-		self.highestSeenInstanceID = instanceId
-		self.highestSeenInstanceID_fromNodeID = fromNodeId
+func (learner *Learner) SetSeenInstanceID(instanceId uint64, fromNodeId uint64) {
+	if instanceId > learner.highestSeenInstanceID {
+		learner.highestSeenInstanceID = instanceId
+		learner.highestSeenInstanceIDFromNodeID = fromNodeId
 	}
 }
 
-func (self *Learner) GetNewChecksum() uint32 {
-	return self.state.GetNewChecksum()
+func (learner *Learner) GetNewChecksum() uint32 {
+	return learner.state.GetNewChecksum()
 }
 
-func (self *Learner) Reset_AskforLearn_Noop(timeout uint32) {
-	if self.askforlearnNoopTimerID > 0 {
-		self.timerThread.DelTimer(self.askforlearnNoopTimerID)
+func (learner *Learner) Reset_AskforLearn_Noop(timeout int) {
+	if learner.askforlearnNoopTimerID > 0 {
+		learner.timerThread.DelTimer(learner.askforlearnNoopTimerID)
 	}
 
-	self.askforlearnNoopTimerID = self.timerThread.AddTimer(timeout, LearnerTimer, self.instance)
+	learner.askforlearnNoopTimerID = learner.timerThread.AddTimer(uint32(timeout), LearnerTimer, learner.instance)
 }
 
-func (self *Learner) AskforLearn_Noop() {
-	self.Reset_AskforLearn_Noop(comm.GetAskforLearnInterval())
-	self.isImLearning = false
-	self.askforLearn()
+func (learner *Learner) AskforLearn_Noop() {
+	learner.Reset_AskforLearn_Noop(comm.GetInsideOptions().GetAskforLearnInterval())
+	learner.isImLearning = false
+	learner.askforLearn()
 }
 
-func (self *Learner) askforLearn() {
+func (learner *Learner) askforLearn() {
 	log.Info("start learn")
 
-	base := self.Base
+	base := learner.Base
 
 	msg := &comm.PaxosMsg{
-		InstanceID: proto.Uint64(self.GetInstanceId()),
-		NodeID:     proto.Uint64(self.config.GetMyNodeId()),
+		InstanceID: proto.Uint64(learner.GetInstanceId()),
+		NodeID:     proto.Uint64(learner.config.GetMyNodeId()),
 		MsgType:    proto.Int32(comm.MsgType_PaxosLearner_AskforLearn),
 	}
 
-	if self.config.IsIMFollower() {
-		msg.ProposalNodeID = proto.Uint64(self.config.GetFollowToNodeID())
+	if learner.config.IsIMFollower() {
+		msg.ProposalNodeID = proto.Uint64(learner.config.GetFollowToNodeID())
 	}
 
-	log.Info("end instanceid %d, mynodeid %d", msg.GetInstanceID(), msg.GetNodeID())
+	log.Infof("end instanceid %d, mynodeid %d", msg.GetInstanceID(), msg.GetNodeID())
 
-	base.broadcastMessage(msg, BroadcastMessage_Type_RunSelf_None)
-	//self.BroadcastMessageToTempNode(msg, comm.Message_SendType_UDP)
+	base.broadcastMessage(msg, BroadcastMessage_Type_RunSelf_None, network.Default_SendType)
+
+	base.BroadcastMessageToTempNode(msg, network.Message_SendType_UDP) // TODO ???
 }
 
-func (self *Learner) OnAskforLearn(msg *comm.PaxosMsg) {
+func (learner *Learner) OnAskforLearn(msg *comm.PaxosMsg) {
 	log.Info("start msg.instanceid %d now.instanceid %d msg.fromnodeid %d",
-		msg.GetInstanceID(), self.GetInstanceId(), msg.GetNodeID())
+		msg.GetInstanceID(), learner.GetInstanceId(), msg.GetNodeID())
 
-	self.SetSeenInstanceID(msg.GetInstanceID(), msg.GetNodeID())
-	if msg.GetProposalNodeID() == self.config.GetMyNodeId() {
+	learner.SetSeenInstanceID(msg.GetInstanceID(), msg.GetNodeID())
+	if msg.GetProposalNodeID() == learner.config.GetMyNodeId() {
 		log.Info("found a node %d follow me", msg.GetNodeID())
-		self.config.AddFollowerNode(msg.GetNodeID())
+		learner.config.AddFollowerNode(msg.GetNodeID())
 	}
 
-	if msg.GetInstanceID() >= self.GetInstanceId() {
+	if msg.GetInstanceID() >= learner.GetInstanceId() {
 		return
 	}
 
-	/*
-	if msg.GetInstanceID() >= self.CpMng.GetMinChosenInstanceID() {
-	  if !self.LearnerSender.Prepare(msg.GetInstanceID(), msg.GetNodeID()) {
-		log.Error("learner sender working for others")
+	// TODO ???
+	if msg.GetInstanceID() >= learner.instance.ckMnger.GetMinChosenInstanceID() {
+		if !learner.sender.Prepare(msg.GetInstanceID(), msg.GetNodeID()) {
+			log.Errorf("learner sender working for others")
 
-		if msg.GetInstanceID() == self.GetInstanceId()-1 {
-		  log.Info("instanceid only difference one, just send this value to other")
-		  var state comm.AcceptorStateData
-		  err := self.PaxosLog.ReadState(self.config.GetMyGroupIdx(), msg.GetInstanceID(), &state)
-		  if err == nil {
-			ballot := newBallotNumber(state.GetAcceptedID(), state.GetAcceptedNodeID())
-			self.SendLearnValue(msg.GetNodeID(), msg.GetInstanceID(), ballot, state.GetAcceptedValue(), 0, false)
-		  }
+			if msg.GetInstanceID() == learner.GetInstanceId()-1 {
+				log.Info("instanceid only difference one, just send this value to other")
+				var state comm.AcceptorStateData
+				state, err := learner.paxosLog.ReadState(learner.config.GetMyGroupId(), msg.GetInstanceID())
+				if err == nil {
+					ballot := NewBallotNumber(state.GetAcceptedID(), state.GetAcceptedNodeID())
+					learner.SendLearnValue(msg.GetNodeID(), msg.GetInstanceID(), ballot,
+						state.GetAcceptedValue(), 0, false)
+				}
+			}
+			return
 		}
-
-		return
-	  }
 	}
-	*/
 
-	self.sendNowInstanceID(msg.GetInstanceID(), msg.GetNodeID())
+	learner.sendNowInstanceID(msg.GetInstanceID(), msg.GetNodeID())
 }
 
-func (self *Learner) sendNowInstanceID(instanceId uint64, sendNodeId uint64) {
+func (learner *Learner) sendNowInstanceID(instanceId uint64, sendNodeId uint64) {
 	msg := &comm.PaxosMsg{
-		InstanceID:    proto.Uint64(instanceId),
-		NodeID:        proto.Uint64(self.config.GetMyNodeId()),
-		MsgType:       proto.Int32(comm.MsgType_PaxosLearner_SendNowInstanceID),
-		NowInstanceID: proto.Uint64(self.GetInstanceId()),
-		//MinChosenInstanceID:
+		InstanceID:          proto.Uint64(instanceId),
+		NodeID:              proto.Uint64(learner.config.GetMyNodeId()),
+		MsgType:             proto.Int32(comm.MsgType_PaxosLearner_SendNowInstanceID),
+		NowInstanceID:       proto.Uint64(learner.GetInstanceId()),
+		MinChosenInstanceID: proto.Uint64(learner.ckMnger.GetMinChosenInstanceID()),
 	}
 
-	if self.GetInstanceId()-instanceId > 50 {
-		/*
-		systemVarBuffer, err := self.config.GetSystemVSM().GetCheckpointBuffer()
+	if learner.GetInstanceId()-instanceId > 50 {
+		//instanceid too close not need to send vsm/master checkpoint.  TODO ???
+		var systemVarBuffer string
+		systemVarBuffer, err := learner.config.GetSystemVSM().GetCheckpointBuffer()
 		if err == nil {
-		  msg.SystemVariables = util.CopyBytes(systemVarBuffer)
+			msg.SystemVariables = util.CopyBytes([]byte(systemVarBuffer))
 		}
 
-		masterVarBuffer, err := self.config.GetMasterSM().GetCheckpointBuffer()
+		masterVarBuffer, err := learner.config.GetMasterSM().GetCheckpointBuffer()
 		if err == nil {
-		  msg.MasterVariables = util.CopyBytes(masterVarBuffer)
+			msg.MasterVariables = util.CopyBytes([]byte(masterVarBuffer))
 		}
-		*/
+
+		if learner.config.GetMasterSM() != nil {
+			masterVarBuffer, err = learner.config.GetMasterSM().GetCheckpointBuffer()
+			if err == nil {
+				msg.MasterVariables = util.CopyBytes([]byte(masterVarBuffer))
+			}
+		}
 	}
 
-	self.sendPaxosMessage(sendNodeId, msg)
+	learner.sendPaxosMessage(sendNodeId, msg, network.Default_SendType)
 }
 
-func (self *Learner) OnSendNowInstanceId(msg *comm.PaxosMsg) {
-	instance := self.instance
-	instanceId := self.instanceId
+// TODO ??? 逻辑不是很清楚
+func (learner *Learner) OnSendNowInstanceId(msg *comm.PaxosMsg) {
+	instance := learner.instance
+	instanceId := learner.instanceId
 
-	log.Info("[%s]start msg.instanceid %d now.instanceid %d msg.from_nodeid %d msg.maxinstanceid %d",
-		instance.String(), msg.GetInstanceID(), self.instanceId, msg.GetNodeID(), msg.GetNowInstanceID())
+	log.Infof("[%s]start msg.instanceid %d now.instanceid %d msg.from_nodeid %d msg.maxinstanceid %d",
+		instance.String(), msg.GetInstanceID(), learner.instanceId, msg.GetNodeID(), msg.GetNowInstanceID())
 
-	self.SetSeenInstanceID(msg.GetNowInstanceID(), msg.GetNodeID())
+	learner.SetSeenInstanceID(msg.GetNowInstanceID(), msg.GetNodeID())
+
+	systemVariablesChange, err := learner.config.GetSystemVSM().UpdateByCheckpoint(msg.SystemVariables)
+	if systemVariablesChange && err == nil {
+		log.Info("systemVariables changed!, all thing need to reflesh, so skip this msg")
+		return
+	}
+
+	if systemVariablesChange && err == nil {
+		log.Info("systemVariables changed!, all thing need to reflesh, so skip this msg")
+		return
+	}
+
+	if masterSM := learner.config.GetMasterSM(); masterSM != nil {
+		masterVariablesChange, err := masterSM.UpdateByCheckpoint(msg.MasterVariables)
+		if masterVariablesChange && err == nil {
+			log.Info("systemVariables changed!, all thing need to reflesh, so skip this msg")
+			return
+		}
+	}
 
 	if msg.GetInstanceID() != instanceId {
-		log.Error("[%s]lag msg instanceid %d", instance.String(), msg.GetInstanceID())
+		log.Errorf("[%s]lag msg instanceid %d", instance.String(), msg.GetInstanceID())
 		return
 	}
 
 	if msg.GetNowInstanceID() <= instanceId {
-		log.Error("[%s]lag msg instanceid %d", instance.String(), msg.GetNowInstanceID())
+		log.Errorf("[%s]lag msg instanceid %d", instance.String(), msg.GetNowInstanceID())
 		return
 	}
 
 	if msg.GetMinChosenInstanceID() > instanceId {
+		log.Infof("my instanceid %d small than other's minchoseninstanceid %d, other nodeid %d",
+			learner.instanceId, msg.GetMinChosenInstanceID(), msg.GetNodeID())
 
-	} else if (!self.isImLearning) {
-		self.confirmAskForLearn(msg.GetNodeID())
+		learner.OnAskforCheckpoint(msg)
+	} else if !learner.isImLearning {
+		learner.confirmAskForLearn(msg.GetNodeID())
 	}
 }
 
-func (self *Learner) confirmAskForLearn(sendNodeId uint64) {
+////////////////////////////////////////////////////////////////////////////////////////
+
+func (learner *Learner) confirmAskForLearn(sendNodeId uint64) {
 	msg := &comm.PaxosMsg{
-		InstanceID: proto.Uint64(self.instanceId),
-		NodeID:     proto.Uint64(self.config.GetMyNodeId()),
+		InstanceID: proto.Uint64(learner.instanceId),
+		NodeID:     proto.Uint64(learner.config.GetMyNodeId()),
 		MsgType:    proto.Int32(comm.MsgType_PaxosLearner_ConfirmAskforLearn),
 	}
-	self.sendPaxosMessage(sendNodeId, msg)
-	self.isImLearning = true
+	learner.sendPaxosMessage(sendNodeId, msg, network.Default_SendType)
+	learner.isImLearning = true
 }
 
-func (self *Learner) OnConfirmAskForLearn(msg *comm.PaxosMsg) {
-	log.Info("start msg.instanceid %d msg.from nodeid %d", msg.GetInstanceID(), msg.GetNodeID())
+func (learner *Learner) OnConfirmAskForLearn(msg *comm.PaxosMsg) {
+	log.Infof("start msg.instanceid %d msg.from nodeid %d", msg.GetInstanceID(), msg.GetNodeID())
 
-	if !self.sender.Confirm(msg.GetInstanceID(), msg.GetNodeID()) {
-		log.Error("learner sender confirm fail,maybe is lag msg")
+	if !learner.sender.Confirm(msg.GetInstanceID(), msg.GetNodeID()) {
+		log.Errorf("learner sender confirm fail,maybe is lag msg")
 		return
 	}
 
 	log.Info("ok, success confirm")
 }
 
-func (self *Learner) OnAskforCheckpoint(msg *comm.PaxosMsg) {
 
-}
 
-func (self *Learner) SendLearnValue(sendNodeId uint64, learnInstanceId uint64,
-	ballot BallotNumber, value []byte, cksum uint32, needAck bool) error {
+func (learner *Learner) SendLearnValue(sendNodeId uint64, learnInstanceId uint64,
+	ballot *BallotNumber, value []byte, cksum uint32, needAck bool) error {
 	var paxosMsg = &comm.PaxosMsg{
 		MsgType:        proto.Int32(comm.MsgType_PaxosLearner_SendLearnValue),
 		InstanceID:     proto.Uint64(learnInstanceId),
-		NodeID:         proto.Uint64(self.config.GetMyNodeId()),
+		NodeID:         proto.Uint64(learner.config.GetMyNodeId()),
 		ProposalNodeID: proto.Uint64(ballot.nodeId),
 		ProposalID:     proto.Uint64(ballot.proposalId),
 		Value:          value,
@@ -341,147 +376,191 @@ func (self *Learner) SendLearnValue(sendNodeId uint64, learnInstanceId uint64,
 		paxosMsg.Flag = proto.Uint32(comm.PaxosMsgFlagType_SendLearnValue_NeedAck)
 	}
 
-	return self.sendPaxosMessage(sendNodeId, paxosMsg)
+	return learner.sendPaxosMessage(sendNodeId, paxosMsg, network.Default_SendType)
 }
 
-func (self *Learner) OnSendLearnValue(msg *comm.PaxosMsg) {
-	log.Info("START Msg.InstanceID %d Now.InstanceID %d Msg.ballot_proposalid %d Msg.ballot_nodeid %d Msg.ValueSize %d",
-		msg.GetInstanceID(), self.GetInstanceId(), msg.GetProposalID(),
+// 接收到发过来的信息
+func (learner *Learner) OnSendLearnValue(msg *comm.PaxosMsg) {
+	log.Infof("START Msg.InstanceID %d Now.InstanceID %d Msg.ballot_proposalid %d Msg.ballot_nodeid %d Msg.ValueSize %d",
+		msg.GetInstanceID(), learner.GetInstanceId(), msg.GetProposalID(),
 		msg.GetNodeID(), len(msg.Value))
 
-	if msg.GetInstanceID() > self.GetInstanceId() {
+	if msg.GetInstanceID() > learner.GetInstanceId() {
 		log.Debug("[Latest Msg] i can't learn")
 		return
 	}
 
-	if msg.GetInstanceID() < self.GetInstanceId() {
+	if msg.GetInstanceID() < learner.GetInstanceId() {
 		log.Debug("[Lag Msg] no need to learn")
 	} else {
 		ballot := NewBallotNumber(msg.GetProposalID(), msg.GetProposalNodeID())
-		err := self.state.LearnValue(msg.GetInstanceID(), *ballot, msg.GetValue(), self.GetLastChecksum())
+		err := learner.state.LearnValue(msg.GetInstanceID(), *ballot, msg.GetValue(), learner.GetLastChecksum())
 		if err != nil {
-			log.Error("LearnState.LearnValue fail:%v", err)
+			log.Errorf("LearnState.LearnValue fail:%v", err)
 			return
 		}
-		log.Info("END LearnValue OK, proposalid %d proposalid_nodeid %d valueLen %d",
+		log.Infof("END LearnValue OK, proposalid %d proposalid_nodeid %d valueLen %d",
 			msg.GetProposalID(), msg.GetNodeID(), len(msg.Value))
 	}
 
 	if msg.GetFlag() == comm.PaxosMsgFlagType_SendLearnValue_NeedAck {
-		self.Reset_AskforLearn_Noop(comm.GetAskforLearnInterval())
-		self.SendLearnValue_Ack(msg.GetNodeID())
+		learner.Reset_AskforLearn_Noop(comm.GetInsideOptions().GetAskforLearnInterval())
+		learner.SendLearnValue_Ack(msg.GetNodeID())
 	}
 }
 
-func (self *Learner) SendLearnValue_Ack(sendNodeId uint64) {
-	log.Info("START LastAck.Instanceid %d Now.Instanceid %d", self.lastAckInstanceId, self.GetInstanceId())
+// 发送确认信息
+// 并不是每学习一个value, 就发送ack，而是学习了ack_lead个value之后才发送ack,这样可以减少网络请求
+func (learner *Learner) SendLearnValue_Ack(sendNodeId uint64) {
+	log.Infof("START LastAck.Instanceid %d Now.Instanceid %d", learner.lastAckInstanceId, learner.GetInstanceId())
 
-	if self.GetInstanceId() < self.lastAckInstanceId+comm.GetLeanerReceiver_Ack_Lead() {
+	if learner.GetInstanceId() < learner.lastAckInstanceId + uint64(comm.GetInsideOptions().GetLearnerReceiver_Ack_Lead()) {
 		log.Info("no need ack")
 		return
 	}
 
-	self.lastAckInstanceId = self.GetInstanceId()
+	learner.lastAckInstanceId = learner.GetInstanceId()
 
 	msg := &comm.PaxosMsg{
-		InstanceID: proto.Uint64(self.GetInstanceId()),
+		InstanceID: proto.Uint64(learner.GetInstanceId()),
 		MsgType:    proto.Int32(comm.MsgType_PaxosLearner_SendLearnValue_Ack),
-		NodeID:     proto.Uint64(self.config.GetMyNodeId()),
+		NodeID:     proto.Uint64(learner.config.GetMyNodeId()),
 	}
 
-	self.sendPaxosMessage(sendNodeId, msg)
+	learner.sendPaxosMessage(sendNodeId, msg, network.Default_SendType)
 
 	log.Info("END.OK")
 }
 
-func (self *Learner) OnSendLearnValue_Ack(msg *comm.PaxosMsg) {
+// 接收到ack信息，更新sender信息
+func (learner *Learner) OnSendLearnValue_Ack(msg *comm.PaxosMsg) {
 	log.Info("Msg.Ack.Instanceid %d Msg.from_nodeid %d", msg.GetInstanceID(), msg.GetNodeID())
-	self.sender.Ack(msg.GetInstanceID(), msg.GetNodeID())
+	learner.sender.Ack(msg.GetInstanceID(), msg.GetNodeID())
 }
 
-func (self *Learner) getSeenLatestInstanceId() uint64 {
-	return self.highestSeenInstanceID
+func (learner *Learner) getSeenLatestInstanceId() uint64 {
+	return learner.highestSeenInstanceID
 }
 
-func (self *Learner) ProposerSendSuccess(instanceId uint64, proposalId uint64) {
-	msg := &comm.PaxosMsg{
-		MsgType:      proto.Int32(comm.MsgType_PaxosLearner_ProposerSendSuccess),
-		InstanceID:   proto.Uint64(instanceId),
-		NodeID:       proto.Uint64(self.config.GetMyNodeId()),
-		ProposalID:   proto.Uint64(proposalId),
-		LastChecksum: proto.Uint32(self.GetLastChecksum()),
-	}
+////////////////////////////////////////////////////////////////////////////////////////////////
 
-	self.broadcastMessage(msg, BroadcastMessage_Type_RunSelf_First)
-}
-
-func (self *Learner) OnProposerSendSuccess(msg *comm.PaxosMsg) {
-	log.Info("[%s]OnProposerSendSuccess Msg.InstanceID %d Now.InstanceID %d Msg.ProposalID %d "+
-		"State.AcceptedID %d State.AcceptedNodeID %d, Msg.from_nodeid %d",
-		self.instance.String(), msg.GetInstanceID(), self.GetInstanceId(), msg.GetProposalID(),
-		self.acceptor.GetAcceptorState().acceptedNum.proposalId,
-		self.acceptor.GetAcceptorState().acceptedNum.nodeId,
-		msg.GetNodeID())
-
-	if msg.GetInstanceID() != self.GetInstanceId() {
-		log.Debug("instance id %d not same as msg instance id %d", self.GetInstanceId(), msg.GetInstanceID())
+func (learner *Learner) TransmitToFollower() {
+	if learner.config.GetMyFollowerCount() == 0 {
 		return
 	}
 
-	if self.acceptor.GetAcceptorState().acceptedNum.IsNull() {
+	acceptor := learner.acceptor
+	msg := &comm.PaxosMsg{
+		MsgType:        proto.Int32(comm.MsgType_PaxosLearner_SendLearnValue),
+		InstanceID:     proto.Uint64(learner.GetInstanceId()),
+		NodeID:         proto.Uint64(learner.config.GetMyNodeId()),
+		ProposalNodeID: proto.Uint64(acceptor.GetAcceptorState().acceptedNum.nodeId),
+		ProposalID:     proto.Uint64(acceptor.GetAcceptorState().acceptedNum.proposalId),
+		Value:          acceptor.GetAcceptorState().GetAcceptedValue(),
+		LastChecksum:   proto.Uint32(learner.GetLastChecksum()),
+	}
+
+	learner.BroadcastMessageToFollower(msg, network.Default_SendType)
+
+	log.Info("OK")
+}
+
+// TODO ???
+func (learner *Learner) ProposerSendSuccess(instanceId uint64, proposalId uint64) {
+	msg := &comm.PaxosMsg{
+		MsgType:      proto.Int32(comm.MsgType_PaxosLearner_ProposerSendSuccess),
+		InstanceID:   proto.Uint64(instanceId),
+		NodeID:       proto.Uint64(learner.config.GetMyNodeId()),
+		ProposalID:   proto.Uint64(proposalId),
+		LastChecksum: proto.Uint32(learner.GetLastChecksum()),
+	}
+
+	learner.broadcastMessage(msg, BroadcastMessage_Type_RunSelf_First, network.Default_SendType)
+}
+
+func (learner *Learner) OnProposerSendSuccess(msg *comm.PaxosMsg) {
+	log.Infof("[%s]OnProposerSendSuccess Msg.InstanceID %d Now.InstanceID %d Msg.ProposalID %d "+
+		"State.AcceptedID %d State.AcceptedNodeID %d, Msg.from_nodeid %d",
+		learner.instance.String(), msg.GetInstanceID(), learner.GetInstanceId(), msg.GetProposalID(),
+		learner.acceptor.GetAcceptorState().acceptedNum.proposalId,
+		learner.acceptor.GetAcceptorState().acceptedNum.nodeId,
+		msg.GetNodeID())
+
+	if msg.GetInstanceID() != learner.GetInstanceId() {
+		log.Debugf("instance id %d not same as msg instance id %d",
+			learner.GetInstanceId(), msg.GetInstanceID())
+		return
+	}
+
+	if learner.acceptor.GetAcceptorState().acceptedNum.IsNull() {
 		log.Debug("not accepted any proposal")
 		return
 	}
 
 	ballot := NewBallotNumber(msg.GetProposalID(), msg.GetNodeID())
-	if !self.acceptor.GetAcceptorState().acceptedNum.EQ(ballot) {
-		log.Debug("[%s]proposal ballot %s not same to accepted ballot %s", self.instance.String(),
-			self.acceptor.GetAcceptorState().acceptedNum.String(), ballot.String())
+	if !learner.acceptor.GetAcceptorState().acceptedNum.EQ(ballot) {
+		log.Debugf("[%s]proposal ballot %s not same to accepted ballot %s", learner.instance.String(),
+			learner.acceptor.GetAcceptorState().acceptedNum.String(), ballot.String())
 		return
 	}
 
-	self.state.LearnValueWithoutWrite(msg.GetInstanceID(),
-		self.acceptor.GetAcceptorState().GetAcceptedValue(),
-		self.acceptor.GetAcceptorState().GetChecksum())
+	learner.state.LearnValueWithoutWrite(msg.GetInstanceID(),
+		learner.acceptor.GetAcceptorState().GetAcceptedValue(),
+		learner.acceptor.GetAcceptorState().GetChecksum())
 
 	log.Info("learn value instanceid %d ok", msg.GetInstanceID())
-	//self.TransmitToFollower()
+	learner.TransmitToFollower()
 }
 
-func (self *Learner) SendCheckpointBegin(sendNodeId uint64, uuid uint64,
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func (learner *Learner) AskforCheckpoint(sendNodeId uint64) error {
+	err := learner.ckMnger.PrepareForAskforCheckpoint(sendNodeId)
+	if err != nil {
+		return err
+	}
+
+	msg := &comm.PaxosMsg{
+		MsgType:      proto.Int32(comm.MsgType_PaxosLearner_AskforCheckpoint),
+		InstanceID:   proto.Uint64(learner.instanceId),
+		NodeID:       proto.Uint64(learner.config.GetMyNodeId()),
+	}
+
+	return learner.sendPaxosMessage(sendNodeId, msg, network.Default_SendType)
+}
+
+
+func (learner *Learner) OnAskforCheckpoint(msg *comm.PaxosMsg) {
+	ckSender := learner.GetNewCheckpointSender(msg.GetNodeID())
+	if ckSender != nil {
+		// CheckpointSender 在新建的时候已经启动
+	} else {
+		log.Errorf("Checkpoint Sender is running")
+	}
+}
+
+
+func (learner *Learner) SendCheckpointBegin(sendNodeId uint64, uuid uint64,
 	sequence uint64, ckInstanceId uint64) error {
 	ckMsg := &comm.CheckpointMsg{
 		MsgType:              proto.Int32(comm.CheckpointMsgType_SendFile),
-		NodeID:               proto.Uint64(self.config.GetMyNodeId()),
+		NodeID:               proto.Uint64(learner.config.GetMyNodeId()),
 		Flag:                 proto.Int32(comm.CheckpointSendFileFlag_BEGIN),
 		UUID:                 proto.Uint64(uuid),
 		Sequence:             proto.Uint64(sequence),
 		CheckpointInstanceID: proto.Uint64(ckInstanceId),
 	}
 
-	return self.sendCheckpointMessage(sendNodeId, ckMsg)
+	return learner.sendCheckpointMessage(sendNodeId, ckMsg, network.Default_SendType)
 }
 
-func (self *Learner) SendCheckpointEnd(sendNodeId uint64, uuid uint64,
-	sequence uint64, ckInstanceId uint64) error {
-	ckMsg := &comm.CheckpointMsg{
-		MsgType:              proto.Int32(comm.CheckpointMsgType_SendFile),
-		NodeID:               proto.Uint64(self.config.GetMyNodeId()),
-		Flag:                 proto.Int32(comm.CheckpointSendFileFlag_END),
-		UUID:                 proto.Uint64(uuid),
-		Sequence:             proto.Uint64(sequence),
-		CheckpointInstanceID: proto.Uint64(ckInstanceId),
-	}
 
-	return self.sendCheckpointMessage(sendNodeId, ckMsg)
-}
-
-func (self *Learner) SendCheckpoint(sendNodeId uint64, uuid uint64,
+func (learner *Learner) SendCheckpoint(sendNodeId uint64, uuid uint64,
 	sequence uint64, ckInstanceId uint64, ckssum uint32,
 	filePath string, smid int32, offset uint64, buffer []byte) error {
 	ckMsg := &comm.CheckpointMsg{
 		MsgType:              proto.Int32(comm.CheckpointMsgType_SendFile),
-		NodeID:               proto.Uint64(self.config.GetMyNodeId()),
+		NodeID:               proto.Uint64(learner.config.GetMyNodeId()),
 		Flag:                 proto.Int32(comm.CheckpointSendFileFlag_ING),
 		UUID:                 proto.Uint64(uuid),
 		Sequence:             proto.Uint64(sequence),
@@ -493,48 +572,28 @@ func (self *Learner) SendCheckpoint(sendNodeId uint64, uuid uint64,
 		Buffer:               buffer,
 	}
 
-	return self.sendCheckpointMessage(sendNodeId, ckMsg)
+	return learner.sendCheckpointMessage(sendNodeId, ckMsg, network.Default_SendType)
 }
 
-func (self *Learner) OnSendCheckpointBegin(ckMsg *comm.CheckpointMsg) error {
-	err := self.ckReceiver.NewReceiver(ckMsg.GetNodeID(), ckMsg.GetUUID())
-	if err != nil {
-		return err
+
+func (learner *Learner) SendCheckpointEnd(sendNodeId uint64, uuid uint64,
+	sequence uint64, ckInstanceId uint64) error {
+	ckMsg := &comm.CheckpointMsg{
+		MsgType:              proto.Int32(comm.CheckpointMsgType_SendFile),
+		NodeID:               proto.Uint64(learner.config.GetMyNodeId()),
+		Flag:                 proto.Int32(comm.CheckpointSendFileFlag_END),
+		UUID:                 proto.Uint64(uuid),
+		Sequence:             proto.Uint64(sequence),
+		CheckpointInstanceID: proto.Uint64(ckInstanceId),
 	}
 
-	err = self.ckMnger.SetMinChosenInstanceID(ckMsg.GetCheckpointInstanceID())
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return learner.sendCheckpointMessage(sendNodeId, ckMsg, network.Default_SendType)
 }
 
-func (self *Learner) OnSendCheckpointIng(ckMsg *comm.CheckpointMsg) error {
-	return self.ckReceiver.ReceiveCheckpoint(ckMsg)
-}
 
-func (self *Learner) OnSendCheckpointEnd(ckMsg *comm.CheckpointMsg) error {
-	if !self.ckReceiver.IsReceiverFinish(ckMsg.GetNodeID(), ckMsg.GetUUID(), ckMsg.GetSequence()) {
-		log.Error("receive end msg but receiver not finish")
-		return comm.ErrInvalidMsg
-	}
 
-	smList := self.factory.GetSMList()
-	for _, sm := range smList {
-		smid := sm.SMID()
-		if smid == gpaxos.SYSTEM_V_SMID || smid == gpaxos.MASTER_V_SMID {
-			continue
-		}
 
-		//tmpDirPath := self.ckReceiver.GetTmpDirPath(smid)
-
-	}
-
-	return nil
-}
-
-func (self *Learner) OnSendCheckpoint(ckMsg *comm.CheckpointMsg) {
+func (learner *Learner) OnSendCheckpoint(ckMsg *comm.CheckpointMsg) {
 	log.Info("start uuid %d flag %d sequence %d cpi %d checksum %d smid %d offset %d filepath %s",
 		ckMsg.GetUUID(), ckMsg.GetFlag(), ckMsg.GetSequence(), ckMsg.GetCheckpointInstanceID(),
 		ckMsg.GetChecksum(), ckMsg.GetSMID(), ckMsg.GetOffset(), ckMsg.GetFilePath())
@@ -542,70 +601,129 @@ func (self *Learner) OnSendCheckpoint(ckMsg *comm.CheckpointMsg) {
 	var err error
 	switch ckMsg.GetFlag() {
 	case comm.CheckpointSendFileFlag_BEGIN:
-		err = self.OnSendCheckpointBegin(ckMsg)
+		err = learner.OnSendCheckpointBegin(ckMsg)
 		break
 	case comm.CheckpointSendFileFlag_ING:
-		err = self.OnSendCheckpointIng(ckMsg)
+		err = learner.OnSendCheckpointIng(ckMsg)
 		break
 	case comm.CheckpointSendFileFlag_END:
-		err = self.OnSendCheckpointEnd(ckMsg)
+		err = learner.OnSendCheckpointEnd(ckMsg)
 		break
 	}
 
 	if err != nil {
-		log.Error("[FATAL]rest checkpoint receiver and reset askforlearn")
-		self.ckReceiver.Reset()
-		self.Reset_AskforLearn_Noop(5000)
-		self.SendCheckpointAck(ckMsg.GetNodeID(), ckMsg.GetUUID(), ckMsg.GetSequence(), comm.CheckpointSendFileAckFlag_Fail)
+		log.Errorf("[FATAL]rest checkpoint receiver and reset askforlearn")
+		learner.ckReceiver.Reset()
+		learner.Reset_AskforLearn_Noop(5000)
+		learner.SendCheckpointAck(ckMsg.GetNodeID(), ckMsg.GetUUID(), ckMsg.GetSequence(), comm.CheckpointSendFileAckFlag_Fail)
 	} else {
-		self.SendCheckpointAck(ckMsg.GetNodeID(), ckMsg.GetUUID(), ckMsg.GetSequence(), comm.CheckpointSendFileAckFlag_OK)
-		self.Reset_AskforLearn_Noop(10000)
+		learner.SendCheckpointAck(ckMsg.GetNodeID(), ckMsg.GetUUID(), ckMsg.GetSequence(), comm.CheckpointSendFileAckFlag_OK)
+		learner.Reset_AskforLearn_Noop(10000)
 	}
 }
 
-func (self *Learner) SendCheckpointAck(sendNodeId uint64, uuid uint64, sequence uint64, flag int) error {
+
+func (learner *Learner) OnSendCheckpointBegin(ckMsg *comm.CheckpointMsg) error {
+	err := learner.ckReceiver.NewReceiver(ckMsg.GetNodeID(), ckMsg.GetUUID())
+	if err != nil {
+		return err
+	}
+
+	err = learner.ckMnger.SetMinChosenInstanceID(ckMsg.GetCheckpointInstanceID())
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (learner *Learner) OnSendCheckpointIng(ckMsg *comm.CheckpointMsg) error {
+	return learner.ckReceiver.ReceiveCheckpoint(ckMsg)
+}
+
+
+func (learner *Learner) OnSendCheckpointEnd(ckMsg *comm.CheckpointMsg) error {
+	if !learner.ckReceiver.IsReceiverFinish(ckMsg.GetNodeID(), ckMsg.GetUUID(), ckMsg.GetSequence()) {
+		log.Errorf("receive end msg but receiver not finish")
+		return comm.ErrInvalidMsg
+	}
+
+	smList := learner.factory.GetSMList()
+	for _, sm := range smList {
+		smid := sm.SMID()
+		if smid == comm.SYSTEM_V_SMID || smid == comm.MASTER_V_SMID {
+			continue
+		}
+
+		tmpDirPath := learner.ckReceiver.GetTmpDirPath(smid)
+		filePathList, err := util.IterDir(tmpDirPath)
+		if err != nil {
+			log.Errorf("IterDir fail, dirpath %s", tmpDirPath)
+		}
+
+		if filePathList == nil || len(filePathList) == 0 {
+			continue
+		}
+
+		// TODO ???
+		err = sm.LoadCheckpointState(learner.config.GetMyGroupId(), tmpDirPath,
+			filePathList, ckMsg.GetCheckpointInstanceID() )
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+
+
+
+func (learner *Learner) SendCheckpointAck(sendNodeId uint64, uuid uint64, sequence uint64, flag int) error {
 	ckMsg := &comm.CheckpointMsg{
 		MsgType:  proto.Int32(comm.CheckpointMsgType_SendFile_Ack),
-		NodeID:   proto.Uint64(self.config.GetMyNodeId()),
+		NodeID:   proto.Uint64(learner.config.GetMyNodeId()),
 		UUID:     proto.Uint64(uuid),
 		Sequence: proto.Uint64(sequence),
 		Flag:     proto.Int32(comm.CheckpointSendFileFlag_ING),
 	}
 
-	return self.sendCheckpointMessage(sendNodeId, ckMsg)
+	return learner.sendCheckpointMessage(sendNodeId, ckMsg, network.Default_SendType)
 }
 
-func (self *Learner) OnSendCheckpointAck(ckMsg *comm.CheckpointMsg) {
+
+
+func (learner *Learner) OnSendCheckpointAck(ckMsg *comm.CheckpointMsg) {
 	log.Info("START flag %d", ckMsg.GetFlag())
 
-	if self.ckSender != nil && !self.ckSender.IsEnd() {
+	if learner.ckSender != nil && !learner.ckSender.IsEnd() {
 		if ckMsg.GetFlag() == comm.CheckpointSendFileAckFlag_OK {
-			self.ckSender.Ack(ckMsg.GetNodeID(), ckMsg.GetUUID(), ckMsg.GetSequence())
+			learner.ckSender.Ack(ckMsg.GetNodeID(), ckMsg.GetUUID(), ckMsg.GetSequence())
 		} else {
-			self.ckSender.End()
+			learner.ckSender.End()
 		}
 	}
 }
 
-/*
-func (self *Learner) TransmitToFollower() {
-  if self.config.GetMyFollowerCount() == 0 {
-    return
-  }
 
-  acceptor := self.acceptor
-  msg := &comm.PaxosMsg{
-    MsgType:        proto.Int32(comm.MsgType_PaxosLearner_SendLearnValue),
-    InstanceID:     proto.Uint64(self.GetInstanceId()),
-    NodeID:         proto.Uint64(self.config.GetMyNodeId()),
-    ProposalNodeID: proto.Uint64(acceptor.GetAcceptorState().acceptedNum.nodeId),
-    ProposalID:     proto.Uint64(acceptor.GetAcceptorState().acceptedNum.proposalId),
-    Value:          acceptor.GetAcceptorState().GetAcceptedValue(),
-    LastChecksum:   proto.Uint32(self.GetLastChecksum()),
-  }
 
-  self.broadcastMessageToFollower(msg)
 
-  log.Info("OK")
+func (learner *Learner) GetNewCheckpointSender(sendNodeId uint64) *CheckpointSender {
+	if learner.ckSender != nil {
+		if learner.ckSender.isEnd {
+			learner.ckSender = nil
+		}
+	}
+
+	if learner.ckSender == nil {
+		learner.ckSender = NewCheckpointSender(sendNodeId, learner.config, learner,
+			learner.factory, learner.ckMnger)
+		return learner.ckSender
+	}
+
+	return nil
 }
-*/
+
+
+

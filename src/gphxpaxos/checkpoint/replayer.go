@@ -4,14 +4,14 @@ import (
 	"time"
 	log "github.com/sirupsen/logrus"
 	"gphxpaxos/config"
-	"gphxpaxos/logstorage"
+	"gphxpaxos/storage"
 	"gphxpaxos/node"
 	"gphxpaxos/util"
 )
 
 type Replayer struct {
 	config   *config.Config
-	paxosLog *logstorage.PaxosLog
+	paxosLog *storage.PaxosLog
 	factory  *node.SMFac
 	ckmnger  *CheckpointManager
 
@@ -22,10 +22,10 @@ type Replayer struct {
 }
 
 func NewReplayer(config *config.Config, factory *node.SMFac,
-	logStorage *logstorage.LogStorage, mnger *CheckpointManager) *Replayer {
+	logStorage storage.LogStorage, mnger *CheckpointManager) *Replayer {
 	replayer := &Replayer{
 		config:   config,
-		paxosLog: logstorage.NewPaxosLog(logStorage),
+		paxosLog: storage.NewPaxosLog(logStorage),
 		factory:  factory,
 		ckmnger:  mnger,
 	}

@@ -4,7 +4,7 @@ import (
 	"gphxpaxos/config"
 	"time"
 	log "github.com/sirupsen/logrus"
-	"gphxpaxos/logstorage"
+	"gphxpaxos/storage"
 	"gphxpaxos/node"
 	"gphxpaxos/util"
 	"gphxpaxos/comm"
@@ -16,7 +16,7 @@ const (
 
 type Cleaner struct {
 	config     *config.Config
-	logStorage logstorage.LogStorage
+	logStorage storage.LogStorage
 	factory    *node.SMFac
 	ckmnger    *CheckpointManager
 
@@ -30,7 +30,7 @@ type Cleaner struct {
 }
 
 func NewCleaner(config *config.Config, factory *node.SMFac,
-	logStorage logstorage.LogStorage, mnger *CheckpointManager) *Cleaner {
+	logStorage storage.LogStorage, mnger *CheckpointManager) *Cleaner {
 	cleaner := &Cleaner{
 		config:     config,
 		logStorage: logStorage,
@@ -138,7 +138,7 @@ func (cleaner *Cleaner) FixMinChosenInstanceID(oldMinChosenInstanceId uint64) er
 }
 
 func (cleaner *Cleaner) DeleteOne(instanceId uint64) error {
-	options := &logstorage.WriteOptions{
+	options := &storage.WriteOptions{
 		Sync: false,
 	}
 

@@ -7,7 +7,7 @@ import (
 	"gphxpaxos/config"
 	"fmt"
 	"time"
-	"gphxpaxos/logstorage"
+	"gphxpaxos/storage"
 	"gphxpaxos/util"
 	"gphxpaxos/node"
 	"gphxpaxos/comm"
@@ -25,8 +25,8 @@ type CommitMsg struct {
 
 type Instance struct {
 	config     *config.Config
-	logStorage logstorage.LogStorage
-	paxosLog   *logstorage.PaxosLog
+	logStorage storage.LogStorage
+	paxosLog   *storage.PaxosLog
 	committer  *Committer
 	commitctx  *CommitContext
 	proposer   *Proposer
@@ -52,12 +52,13 @@ type Instance struct {
 	mutex        sync.Mutex
 }
 
-func NewInstance(config *config.Config, logStorage logstorage.LogStorage, transport network.MsgTransport, useCkReplayer bool) (*Instance, error) {
+func NewInstance(config *config.Config, logstorage storage.LogStorage, transport network.MsgTransport, useCkReplayer bool) (*Instance, error) {
+
 	instance := &Instance{
 		config:       config,
-		logStorage:   logStorage,
+		logStorage:   logstorage,
 		transport:    transport,
-		paxosLog:     logstorage.NewPaxosLog(logStorage),
+		paxosLog:     storage.NewPaxosLog(logstorage),
 		factory:      node.NewSMFac(config.GetMyGroupId()),
 		timerThread:  util.NewTimerThread(),
 		endChan:      make(chan bool),
@@ -67,13 +68,22 @@ func NewInstance(config *config.Config, logStorage logstorage.LogStorage, transp
 	}
 
 	instance.acceptor = NewAcceptor(instance)
+	//Must init acceptor first, because the max instanceid is record in acceptor state.
+	err := instance.acceptor.Init() // TODO ???
+	if err != nil {
+		return nil, err
+	}
 
-	instance.ckMnger = checkpoint.NewCheckpointManager(config, instance.factory, logStorage, useCkReplayer)
+	instance.ckMnger = checkpoint.NewCheckpointManager(config, instance.factory, logstorage, useCkReplayer)
 	instance.ckMnger.Init()
 	cpInstanceId := instance.ckMnger.GetCheckpointInstanceID() + 1
 
-	log.Info("acceptor OK, log.instanceid %d checkpoint.instanceid %d", instance.acceptor.GetInstanceId(), cpInstanceId)
+	log.Infof("acceptor OK, log.instanceid %d checkpoint.instanceid %d",
+		instance.acceptor.GetInstanceId(), cpInstanceId)
+
 	nowInstanceId := cpInstanceId
+
+
 	if nowInstanceId < instance.acceptor.GetInstanceId() {
 		err := instance.PlayLog(nowInstanceId, instance.acceptor.GetInstanceId())
 		if err != nil {
@@ -82,7 +92,7 @@ func NewInstance(config *config.Config, logStorage logstorage.LogStorage, transp
 		nowInstanceId = instance.acceptor.GetInstanceId()
 	} else {
 		if nowInstanceId > instance.acceptor.GetInstanceId() {
-			instance.acceptor.InitForNewPaxosInstance(false)
+			instance.acceptor.InitForNewPaxosInstance()
 		}
 		instance.acceptor.setInstanceId(nowInstanceId)
 	}
@@ -91,15 +101,17 @@ func NewInstance(config *config.Config, logStorage logstorage.LogStorage, transp
 
 	instance.commitctx = newCommitContext(instance)
 	instance.committer = newCommitter(instance)
+
 	// learner must create before proposer
 	instance.learner = NewLearner(instance)
+	instance.learner.setInstanceId(nowInstanceId)
 
 	instance.proposer = NewProposer(instance)
 	instance.proposer.setStartProposalID(instance.acceptor.GetAcceptorState().GetPromiseNum().proposalId + 1)
 
-	instance.name = fmt.Sprintf("%s-%d", config.GetOptions().MyNode.String(), config.GetMyNodeId())
+	instance.name = fmt.Sprintf("%s-%d", config.GetOptions().MyNodeInfo.String(), config.GetMyNodeId())
 
-	maxInstanceId, err := loglogstorage.GetMaxInstanceID()
+	maxInstanceId, err := logstorage.GetMaxInstanceId(config.GetMyGroupId())
 	log.Debug("max instance id:%d:%v， propose id:%d", maxInstanceId, err, instance.proposer.GetInstanceId())
 
 	instance.ckMnger.SetMinChosenInstanceID(nowInstanceId)
@@ -107,15 +119,15 @@ func NewInstance(config *config.Config, logStorage logstorage.LogStorage, transp
 	if err != nil {
 		return nil, err
 	}
-	instance.learner.Reset_AskforLearn_Noop(comm.GetAskforLearnInterval())
+	instance.learner.Reset_AskforLearn_Noop(comm.GetInsideOptions().GetAskforLearnInterval())
 
+	instance.learner.Init()
 	instance.ckMnger.Start()
 
 	util.StartRoutine(instance.main)
 
 	return instance, nil
 }
-
 
 // instance main loop
 func (instance *Instance) main() {
@@ -175,13 +187,13 @@ func (instance *Instance) InitLastCheckSum() error {
 		return nil
 	}
 
-	state, err := instance.paxosLog.ReadState(acceptor.GetInstanceId() - 1)
+	state, err := instance.paxosLog.ReadState(instance.config.GetMyGroupId(), acceptor.GetInstanceId()-1)
 	if err != nil && err != comm.ErrKeyNotFound {
 		return err
 	}
 
 	if err == comm.ErrKeyNotFound {
-		log.Error("last checksum not exist, now instance id %d", instance.acceptor.GetInstanceId())
+		log.Errorf("last checksum not exist, now instance id %d", instance.acceptor.GetInstanceId())
 		instance.lastChecksum = 0
 		return nil
 	}
@@ -194,25 +206,29 @@ func (instance *Instance) InitLastCheckSum() error {
 
 func (instance *Instance) PlayLog(beginInstanceId uint64, endInstanceId uint64) error {
 	if beginInstanceId < instance.ckMnger.GetMinChosenInstanceID() {
-		log.Error("now instanceid %d small than chosen instanceid %d", beginInstanceId, instance.ckMnger.GetMinChosenInstanceID())
+		log.Errorf("now instanceid %d small than chosen instanceid %d", beginInstanceId, instance.ckMnger.GetMinChosenInstanceID())
 		return comm.ErrInvalidInstanceId
 	}
 
 	for instanceId := beginInstanceId; instanceId < endInstanceId; instanceId++ {
-		state, err := instance.paxosLog.ReadState(instanceId)
+		state, err := instance.paxosLog.ReadState(instance.groupId(), instanceId)
 		if err != nil {
-			log.Error("read instance %d log fail %v", instanceId, err)
+			log.Errorf("read instance %d log fail %v", instanceId, err)
 			return err
 		}
 
-		err = instance.factory.Execute(instanceId, state.GetAcceptedValue(), nil)
+		err = instance.factory.Execute(instance.groupId(), instanceId, state.GetAcceptedValue(), nil)
 		if err != nil {
-			log.Error("execute instanceid %d fail:%v", instanceId, err)
+			log.Errorf("execute instanceid %d fail:%v", instanceId, err)
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (instance *Instance) groupId() int {
+	return instance.config.GetMyGroupId()
 }
 
 func (instance *Instance) NowInstanceId() uint64 {
@@ -287,15 +303,15 @@ func (instance *Instance) onCommit() {
 	}
 
 	if instance.config.IsIMFollower() {
-		log.Error("[%s]I'm follower, skip commit new value", instance.name)
-		instance.commitctx.setResultOnlyRet(gpaxos.PaxosTryCommitRet_Follower_Cannot_Commit)
+		log.Errorf("[%s]I'm follower, skip commit new value", instance.name)
+		instance.commitctx.setResultOnlyRet(comm.PaxosTryCommitRet_Follower_Cannot_Commit)
 		return
 	}
 
 	commitValue := instance.commitctx.getCommitValue()
-	if len(commitValue) > comm.GetMaxValueSize() {
-		log.Error("[%s]value size %d to large, skip commit new value", instance.name, len(commitValue))
-		instance.commitctx.setResultOnlyRet(gpaxos.PaxosTryCommitRet_Value_Size_TooLarge)
+	if len(commitValue) > comm.GetInsideOptions().GetMaxValueSize() {
+		log.Errorf("[%s]value size %d to large, skip commit new value", instance.name, len(commitValue))
+		instance.commitctx.setResultOnlyRet(comm.PaxosTryCommitRet_Value_Size_TooLarge)
 	}
 
 	timeOutMs := instance.commitctx.StartCommit(instance.proposer.GetInstanceId())
@@ -314,10 +330,10 @@ func (instance *Instance) GetLastChecksum() uint32 {
 
 func (instance *Instance) GetInstanceValue(instanceId uint64) ([]byte, int32, error) {
 	if instanceId >= instance.acceptor.GetInstanceId() {
-		return nil, -1, gpaxos.Paxos_GetInstanceValue_Value_Not_Chosen_Yet
+		return nil, -1, comm.Paxos_GetInstanceValue_Value_Not_Chosen_Yet
 	}
 
-	state, err := instance.paxosLog.ReadState(instanceId)
+	state, err := instance.paxosLog.ReadState(instance.groupId(), instanceId)
 	if err != nil {
 		return nil, -1, err
 	}
@@ -373,7 +389,7 @@ func (instance *Instance) receiveMsgForLearner(msg *comm.PaxosMsg) error {
 			log.Debug("[%s]instance %d is not my commit", instance.name, learner.GetInstanceId())
 		}
 
-		commitCtx.setResult(gpaxos.PaxosTryCommitRet_OK, learner.GetInstanceId(), learner.GetLearnValue())
+		commitCtx.setResult(comm.PaxosTryCommitRet_OK, learner.GetInstanceId(), learner.GetLearnValue())
 
 		instance.NewInstance(isMyCommit)
 
@@ -385,7 +401,7 @@ func (instance *Instance) receiveMsgForLearner(msg *comm.PaxosMsg) error {
 
 func (instance *Instance) receiveMsgForProposer(msg *comm.PaxosMsg) error {
 	if instance.config.IsIMFollower() {
-		log.Error("[%s]follower skip %d msg", instance.name, msg.GetMsgType())
+		log.Errorf("[%s]follower skip %d msg", instance.name, msg.GetMsgType())
 		return nil
 	}
 
@@ -393,7 +409,7 @@ func (instance *Instance) receiveMsgForProposer(msg *comm.PaxosMsg) error {
 	proposerInstanceId := instance.proposer.GetInstanceId()
 
 	if msgInstanceId != proposerInstanceId {
-		log.Error("[%s]msg instance id %d not same to proposer instance id %d",
+		log.Errorf("[%s]msg instance id %d not same to proposer instance id %d",
 			instance.name, msgInstanceId, proposerInstanceId)
 		return nil
 	}
@@ -411,7 +427,7 @@ func (instance *Instance) receiveMsgForProposer(msg *comm.PaxosMsg) error {
 // handle msg type which for acceptor
 func (instance *Instance) receiveMsgForAcceptor(msg *comm.PaxosMsg, isRetry bool) error {
 	if instance.config.IsIMFollower() {
-		log.Error("[%s]follower skip %d msg", instance.name, msg.GetMsgType())
+		log.Errorf("[%s]follower skip %d msg", instance.name, msg.GetMsgType())
 		return nil
 	}
 
@@ -442,7 +458,7 @@ func (instance *Instance) receiveMsgForAcceptor(msg *comm.PaxosMsg, isRetry bool
 		}
 
 		// never reach here
-		log.Error("wrong msg type %d", msgType)
+		log.Errorf("wrong msg type %d", msgType)
 		return comm.ErrInvalidMsg
 	}
 
@@ -491,12 +507,12 @@ func (instance *Instance) OnReceivePaxosMsg(msg *comm.PaxosMsg, isRetry bool) er
 	if msgType == comm.MsgType_PaxosPrepare || msgType == comm.MsgType_PaxosAccept {
 		if !instance.config.IsValidNodeID(msg.GetNodeID()) {
 			instance.config.AddTmpNodeOnlyForLearn(msg.GetNodeID())
-			log.Error("[%s]is not valid node id", instance.name)
+			log.Errorf("[%s]is not valid node id", instance.name)
 			return nil
 		}
 
 		if !instance.isCheckSumValid(msg) {
-			log.Error("[%s]checksum invalid", instance.name)
+			log.Errorf("[%s]checksum invalid", instance.name)
 			return comm.ErrInvalidMsg
 		}
 
@@ -523,7 +539,7 @@ func (instance *Instance) OnReceivePaxosMsg(msg *comm.PaxosMsg, isRetry bool) er
 		return instance.receiveMsgForLearner(msg)
 	}
 
-	log.Error("invalid msg %d", msgType)
+	log.Errorf("invalid msg %d", msgType)
 	return comm.ErrInvalidMsg
 }
 
@@ -552,7 +568,7 @@ func (instance *Instance) OnReceiveMsg(buffer []byte, cmd int32) error {
 		var msg comm.PaxosMsg
 		err := proto.Unmarshal(buffer, &msg)
 		if err != nil {
-			log.Error("[%s]unmarshal msg error %v", instance.name, err)
+			log.Errorf("[%s]unmarshal msg error %v", instance.name, err)
 			return err
 		}
 		instance.paxosMsgChan <- &msg

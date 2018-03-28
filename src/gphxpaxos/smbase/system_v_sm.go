@@ -1,4 +1,4 @@
-package node
+package smbase
 
 // 实现InsideSM接口
 // TODO

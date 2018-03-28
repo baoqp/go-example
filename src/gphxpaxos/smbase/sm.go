@@ -1,4 +1,4 @@
-package node
+package smbase
 
 // 状态机上下文
 type SMCtx struct {

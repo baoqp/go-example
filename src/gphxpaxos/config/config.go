@@ -3,20 +3,20 @@ package config
 import (
 	"math"
 	"gphxpaxos/comm"
-	"gphxpaxos/node"
 	"gphxpaxos/master"
 	"gphxpaxos/util"
+	"gphxpaxos/smbase"
 )
 
 // TODO
 type Config struct {
-	myNodeId   uint64
-	nodeCount  int
+	myNodeId  uint64
+	nodeCount int
 	myGroupId int
 
 	isFollower          bool
 	followToNodeId      uint64
-	systemVSM           *node.SystemVSM
+	systemVSM           *smbase.SystemVSM
 	masterStateMachine  *master.MasterStateMachine
 	myFollowerMap       map[uint64]uint64
 	tmpNodeOnlyForLearn map[uint64]uint64
@@ -25,9 +25,10 @@ type Config struct {
 	majorCnt int
 }
 
-func NewConfig(options *comm.Options) *Config {
+func NewConfig(options *comm.Options, groupId int ) *Config {
 	return &Config{
 		options:  options,
+		myGroupId: groupId,
 		majorCnt: int(math.Floor(float64(len(options.NodeInfoList))/2)) + 1,
 	}
 }
@@ -77,22 +78,24 @@ func (config *Config) GetMyFollowerCount() int32 {
 }
 
 func (config *Config) AddFollowerNode(followerNodeId uint64) {
-	config.myFollowerMap[followerNodeId] = util.NowTimeMs() + uint64(comm.GetInsideOptions().GetAskforLearnerval()*3)
+	config.myFollowerMap[followerNodeId] = util.NowTimeMs() + uint64(comm.GetInsideOptions().GetAskforLearnInterval()*3)
 }
 
 func (config *Config) AddTmpNodeOnlyForLearn(nodeId uint64) {
 
 }
 
+func (config *Config) GetSystemVSM() *smbase.SystemVSM {
+	return config.systemVSM
+}
 
-func (config *Config) GetSystemVSM() *node.SystemVSM {
-  return config.systemVSM
+func (config *Config) SetMasterSM(masterSM *master.MasterStateMachine) *master.MasterStateMachine {
+	config.masterStateMachine = masterSM
 }
 
 func (config *Config) GetMasterSM() *master.MasterStateMachine {
-  return config.masterStateMachine
+	return config.masterStateMachine
 }
-
 
 func (config *Config) CheckConfig() bool {
 	return true

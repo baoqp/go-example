@@ -1,4 +1,4 @@
-package node
+package smbase
 
 import (
 	log "github.com/sirupsen/logrus"

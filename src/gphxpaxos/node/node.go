@@ -1,6 +1,9 @@
 package node
 
-import "gphxpaxos/comm"
+import (
+	"gphxpaxos/comm"
+	"gphxpaxos/smbase"
+)
 
 type Node struct {
 }
@@ -8,7 +11,7 @@ type Node struct {
 //Base function.
 func (node *Node) Propose(groupIdx int, value []byte, instanceId uint64) error { return nil }
 
-func (node *Node) ProposeWithCtx(groupIdx int, value []byte, instanceId uint64, smCtx *SMCtx) error { return nil }
+func (node *Node) ProposeWithCtx(groupIdx int, value []byte, instanceId uint64, smCtx *smbase.SMCtx) error { return nil }
 
 func (node *Node) GetNowInstanceID(groupIdx int) error { return nil }
 
@@ -24,7 +27,7 @@ func (node *Node) GetMyNodeID() uint64 { return 0 }
 //means the execute order index, start from 0.
 func (node *Node) BatchPropose(groupIdx int, value []byte, instanceId uint64, batchIndex uint32) error { return nil }
 
-func (node *Node) BatchProposeWithCtx(groupIdx int, value []byte, instanceId uint64, batchIndex uint32, smCtx *SMCtx) error {
+func (node *Node) BatchProposeWithCtx(groupIdx int, value []byte, instanceId uint64, batchIndex uint32, smCtx *smbase.SMCtx) error {
 	return nil
 }
 
@@ -37,9 +40,9 @@ func (node *Node) SetBatchDelayTimeMs(groupIdx int, iBatchDelayTimeMs int) error
 //State machine.
 
 //This function will add state machine to all group.
-func (node *Node) AddStateMachineToAllGroup(sm *StateMachine) error { return nil }
+func (node *Node) AddStateMachineToAllGroup(sm *smbase.StateMachine) error { return nil }
 
-func (node *Node) AddStateMachine(groupIdx int, sm *StateMachine) error { return nil }
+func (node *Node) AddStateMachine(groupIdx int, sm *smbase.StateMachine) error { return nil }
 
 //Timeout control.
 func (node *Node) SetTimeoutMs(timeoutMs int) error {

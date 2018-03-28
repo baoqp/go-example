@@ -9,11 +9,12 @@ import (
 	"time"
 	"gphxpaxos/storage"
 	"gphxpaxos/util"
-	"gphxpaxos/node"
 	"gphxpaxos/comm"
 	"container/list"
 	"gphxpaxos/checkpoint"
 	"github.com/golang/protobuf/proto"
+	"gphxpaxos/smbase"
+	"golang.org/x/net/html/atom"
 )
 
 const (
@@ -33,7 +34,7 @@ type Instance struct {
 	learner    *Learner
 	acceptor   *Acceptor
 	name       string
-	factory    *node.SMFac
+	factory    *smbase.SMFac
 
 	transport network.MsgTransport
 
@@ -52,14 +53,15 @@ type Instance struct {
 	mutex        sync.Mutex
 }
 
-func NewInstance(config *config.Config, logstorage storage.LogStorage, transport network.MsgTransport, useCkReplayer bool) (*Instance, error) {
+func NewInstance(config *config.Config, logstorage storage.LogStorage, transport network.MsgTransport,
+	useCkReplayer bool) (*Instance, error) {
 
 	instance := &Instance{
 		config:       config,
 		logStorage:   logstorage,
 		transport:    transport,
 		paxosLog:     storage.NewPaxosLog(logstorage),
-		factory:      node.NewSMFac(config.GetMyGroupId()),
+		factory:      smbase.NewSMFac(config.GetMyGroupId()),
 		timerThread:  util.NewTimerThread(),
 		endChan:      make(chan bool),
 		commitChan:   make(chan CommitMsg),
@@ -173,6 +175,15 @@ func (instance *Instance) Status(instanceId uint64) (Status, []byte) {
 	return Pending, nil
 }
 
+func (instance *Instance) GetCheckpointCleaner() *checkpoint.Cleaner {
+	return instance.ckMnger.GetCleaner()
+}
+
+func (instance *Instance) GetCheckpointReplayer() *checkpoint.Replayer {
+	return instance.ckMnger.GetRelayer()
+}
+
+
 func (instance *Instance) InitLastCheckSum() error {
 	acceptor := instance.acceptor
 	ckMnger := instance.ckMnger
@@ -227,9 +238,7 @@ func (instance *Instance) PlayLog(beginInstanceId uint64, endInstanceId uint64) 
 	return nil
 }
 
-func (instance *Instance) groupId() int {
-	return instance.config.GetMyGroupId()
-}
+
 
 func (instance *Instance) NowInstanceId() uint64 {
 	instance.mutex.Lock()
@@ -325,7 +334,7 @@ func (instance *Instance) String() string {
 }
 
 func (instance *Instance) GetLastChecksum() uint32 {
-	return 0
+	return instance.lastChecksum
 }
 
 func (instance *Instance) GetInstanceValue(instanceId uint64) ([]byte, int32, error) {
@@ -576,3 +585,25 @@ func (instance *Instance) OnReceiveMsg(buffer []byte, cmd int32) error {
 
 	return nil
 }
+
+
+/////////////////////////////////////////////////////////////
+
+func (instance *Instance) AddStateMachine(sm smbase.StateMachine) {
+	instance.factory.AddSM(sm)
+}
+
+func (instance *Instance) SMExecute(instanceId uint64, value []byte,
+	isMyCommit bool, smCtx *smbase.SMCtx) error {
+
+	return instance.factory.Execute(instance.groupId(), instanceId, value, smCtx)
+}
+
+
+func(instance *Instance) groupId() int {
+	return instance.config.GetMyGroupId()
+}
+
+
+
+

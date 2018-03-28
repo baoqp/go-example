@@ -5,12 +5,13 @@ import (
 	"gphxpaxos/storage"
 	"gphxpaxos/node"
 	"gphxpaxos/util"
+	"gphxpaxos/smbase"
 )
 
 type CheckpointManager struct {
 	config     *config.Config
 	logStorage storage.LogStorage
-	factory    *node.SMFac
+	factory    *smbase.SMFac
 	cleaner    *Cleaner
 	replayer   *Replayer
 
@@ -70,6 +71,11 @@ func (checkpointManager *CheckpointManager) Stop() {
 
 func (checkpointManager *CheckpointManager) GetRelayer() *Replayer {
 	return checkpointManager.replayer
+}
+
+
+func (checkpointManager *CheckpointManager) GetCleaner() *Cleaner {
+	return checkpointManager.cleaner
 }
 
 func (checkpointManager *CheckpointManager) PrepareForAskforCheckpoint(sendNodeId uint64) error {

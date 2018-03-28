@@ -125,8 +125,8 @@ func (acceptorState *AcceptorState) Load() (uint64, error) {
 		return 0, nil
 	}
 
-	var state comm.AcceptorStateData
-	state, err = acceptorState.paxosLog.ReadState(myGroupId, instanceid)
+	var state = &comm.AcceptorStateData{}
+	err = acceptorState.paxosLog.ReadState(myGroupId, instanceid, state)
 	if err != nil {
 		return instanceid, err
 	}

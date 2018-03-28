@@ -44,7 +44,7 @@ type LogStorage interface {
 
 	GetMaxInstanceId(groupIdx int) (uint64, error)
 
-	SetMinChoseninstanceId(writeOptions *WriteOptions, groupIdx int, minInstanceID uint64) error
+	SetMinChosenInstanceId(writeOptions *WriteOptions, groupIdx int, minInstanceID uint64) error
 
 	GetMinChosenInstanceId(groupIdx int) (uint64, error)
 

@@ -42,8 +42,8 @@ type FollowerNodeInfo struct {
 }
 
 // 两个回调函数
-type MembershipChangeCallback func(int, list *NodeInfoList)
-type MasterChangeCallback func(int, *NodeInfo, uint64)
+type MembershipChangeCallback func(groupidx int, list NodeInfoList)
+type MasterChangeCallback func(groupidx int, list *NodeInfo, i uint64)
 
 // group的状态机数据
 type GroupSMInfo struct {

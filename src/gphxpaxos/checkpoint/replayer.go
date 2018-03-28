@@ -7,6 +7,7 @@ import (
 	"gphxpaxos/storage"
 	"gphxpaxos/node"
 	"gphxpaxos/util"
+	"gphxpaxos/comm"
 )
 
 type Replayer struct {
@@ -83,7 +84,8 @@ func (replayer *Replayer) main() {
 }
 
 func (replayer *Replayer) PlayOne(instanceId uint64) error {
-	state, err := replayer.paxosLog.ReadState(replayer.config.GetMyGroupId(), instanceId)
+	var state = &comm.AcceptorStateData{}
+	 err := replayer.paxosLog.ReadState(replayer.config.GetMyGroupId(), instanceId, state)
 	if err != nil {
 		return err
 	}

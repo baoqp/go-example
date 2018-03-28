@@ -109,10 +109,10 @@ func (logStore *LogStore) Init(path string, db *Database) error {
 	}
 	logStore.nowFileOffset = uint64(nowFileOffset)
 
-	log.Info("init write fileid %d now_write_offset %d filesize %d",
+	log.Infof("init write fileid %d now_write_offset %d filesize %d",
 		logStore.fileId, logStore.nowFileOffset, logStore.nowFileSize)
 
-	log.Info("ok, path %s fileid %d meta cksum %d nowfilesize %d nowfilewriteoffset %d",
+	log.Infof("ok, path %s fileid %d meta cksum %d nowfilesize %d nowfilewriteoffset %d",
 		logStore.path, logStore.fileId, metaCkSum, logStore.nowFileSize, logStore.nowFileOffset)
 
 	return nil
@@ -169,7 +169,7 @@ func (logStore *LogStore) Append(options *WriteOptions, instanceId uint64, buffe
 
 	useMs := util.NowTimeMs() - begin
 
-	log.Info("ok, offset %d fileid %d cksum %d instanceid %d buffersize %d usetime %d ms sync %t",
+	log.Infof("ok, offset %d fileid %d cksum %d instanceid %d buffersize %d usetime %d ms sync %t",
 		offset, fileId, ckSum, instanceId, bufferLen, useMs, options.Sync)
 	return nil
 }
@@ -225,7 +225,7 @@ func (logStore *LogStore) Read(fileIdstr string, instanceId *uint64) ([]byte, er
 	util.DecodeUint64(tmpbuf, 0, instanceId)
 
 	/*
-	log.Info("ok, fileid %d offset %d instanceid %d buffser size %d",
+	log.Infof("ok, fileid %d offset %d instanceid %d buffser size %d",
 	  fileId, offset, *instanceId, int(bufferlen)-util.UINT64SIZE)
 	*/
 
@@ -306,7 +306,7 @@ func (logStore *LogStore) DeleteFile(fileId int32) error {
 		}
 
 		logStore.deletedMaxFileId = deleteFileId
-		log.Info("delete fileid %d", deleteFileId)
+		log.Infof("delete fileid %d", deleteFileId)
 	}
 
 	return err
@@ -340,7 +340,7 @@ func (logStore *LogStore) rebuildIndex(db *Database, nowOffset *uint64) error {
 					log.Error("%v", err)
 					return comm.ErrInvalidMetaFileId
 				}
-				log.Info("end rebuild ok, now file id:%d", nowFileId)
+				log.Infof("end rebuild ok, now file id:%d", nowFileId)
 				err = nil
 			}
 			break
@@ -462,14 +462,14 @@ func (logStore *LogStore) RebuildIndexForOneFile(fileId int32, offset uint64,
 			break
 		}
 
-		log.Info("rebuild one index ok, fileid %d offset %d instanceid %d cksum %d buffer size %d",
+		log.Infof("rebuild one index ok, fileid %d offset %d instanceid %d cksum %d buffer size %d",
 			fileId, nowOffset, instanceId, fileCkSum, len-comm.UINT64SIZE)
 
 		nowOffset += uint64(comm.INT32SIZE) + uint64(len)
 	}
 
 	if needTruncate {
-		log.Info("truncate fileid %d offset %d filesize %d", fileId, nowOffset, fileLen)
+		log.Infof("truncate fileid %d offset %d filesize %d", fileId, nowOffset, fileLen)
 		err = os.Truncate(filePath, int64(nowOffset))
 		if err != nil {
 			log.Error("truncate fail, file path %s truncate to length %d error:%v",
@@ -580,7 +580,7 @@ func (logStore *LogStore) getFileId(needWriteSize uint32, fileId *int32, offset 
 			return err
 		}
 
-		log.Info("new file expand ok, file id %d filesize %d", logStore.fileId, logStore.nowFileSize)
+		log.Infof("new file expand ok, file id %d filesize %d", logStore.fileId, logStore.nowFileSize)
 	}
 
 	*fileId = logStore.fileId

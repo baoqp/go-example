@@ -238,8 +238,8 @@ func (learner *Learner) OnAskforLearn(msg *comm.PaxosMsg) {
 
 			if msg.GetInstanceID() == learner.GetInstanceId()-1 {
 				log.Info("instanceid only difference one, just send this value to other")
-				var state comm.AcceptorStateData
-				state, err := learner.paxosLog.ReadState(learner.config.GetMyGroupId(), msg.GetInstanceID())
+				var state = &comm.AcceptorStateData{}
+				err := learner.paxosLog.ReadState(learner.config.GetMyGroupId(), msg.GetInstanceID(), state)
 				if err == nil {
 					ballot := NewBallotNumber(state.GetAcceptedID(), state.GetAcceptedNodeID())
 					learner.SendLearnValue(msg.GetNodeID(), msg.GetInstanceID(), ballot,
@@ -264,10 +264,10 @@ func (learner *Learner) sendNowInstanceID(instanceId uint64, sendNodeId uint64) 
 
 	if learner.GetInstanceId()-instanceId > 50 {
 		//instanceid too close not need to send vsm/master checkpoint.  TODO ???
-		var systemVarBuffer string
+
 		systemVarBuffer, err := learner.config.GetSystemVSM().GetCheckpointBuffer()
 		if err == nil {
-			msg.SystemVariables = util.CopyBytes([]byte(systemVarBuffer))
+			msg.SystemVariables = util.CopyBytes(systemVarBuffer)
 		}
 
 		masterVarBuffer, err := learner.config.GetMasterSM().GetCheckpointBuffer()
@@ -296,6 +296,7 @@ func (learner *Learner) OnSendNowInstanceId(msg *comm.PaxosMsg) {
 
 	learner.SetSeenInstanceID(msg.GetNowInstanceID(), msg.GetNodeID())
 
+	// TODO 不同的错误需要分开
 	systemVariablesChange, err := learner.config.GetSystemVSM().UpdateByCheckpoint(msg.SystemVariables)
 	if systemVariablesChange && err == nil {
 		log.Info("systemVariables changed!, all thing need to reflesh, so skip this msg")
@@ -358,8 +359,6 @@ func (learner *Learner) OnConfirmAskForLearn(msg *comm.PaxosMsg) {
 	log.Info("ok, success confirm")
 }
 
-
-
 func (learner *Learner) SendLearnValue(sendNodeId uint64, learnInstanceId uint64,
 	ballot *BallotNumber, value []byte, cksum uint32, needAck bool) error {
 	var paxosMsg = &comm.PaxosMsg{
@@ -414,7 +413,7 @@ func (learner *Learner) OnSendLearnValue(msg *comm.PaxosMsg) {
 func (learner *Learner) SendLearnValue_Ack(sendNodeId uint64) {
 	log.Infof("START LastAck.Instanceid %d Now.Instanceid %d", learner.lastAckInstanceId, learner.GetInstanceId())
 
-	if learner.GetInstanceId() < learner.lastAckInstanceId + uint64(comm.GetInsideOptions().GetLearnerReceiver_Ack_Lead()) {
+	if learner.GetInstanceId() < learner.lastAckInstanceId+uint64(comm.GetInsideOptions().GetLearnerReceiver_Ack_Lead()) {
 		log.Info("no need ack")
 		return
 	}
@@ -521,14 +520,13 @@ func (learner *Learner) AskforCheckpoint(sendNodeId uint64) error {
 	}
 
 	msg := &comm.PaxosMsg{
-		MsgType:      proto.Int32(comm.MsgType_PaxosLearner_AskforCheckpoint),
-		InstanceID:   proto.Uint64(learner.instanceId),
-		NodeID:       proto.Uint64(learner.config.GetMyNodeId()),
+		MsgType:    proto.Int32(comm.MsgType_PaxosLearner_AskforCheckpoint),
+		InstanceID: proto.Uint64(learner.instanceId),
+		NodeID:     proto.Uint64(learner.config.GetMyNodeId()),
 	}
 
 	return learner.sendPaxosMessage(sendNodeId, msg, network.Default_SendType)
 }
-
 
 func (learner *Learner) OnAskforCheckpoint(msg *comm.PaxosMsg) {
 	ckSender := learner.GetNewCheckpointSender(msg.GetNodeID())
@@ -538,7 +536,6 @@ func (learner *Learner) OnAskforCheckpoint(msg *comm.PaxosMsg) {
 		log.Errorf("Checkpoint Sender is running")
 	}
 }
-
 
 func (learner *Learner) SendCheckpointBegin(sendNodeId uint64, uuid uint64,
 	sequence uint64, ckInstanceId uint64) error {
@@ -553,7 +550,6 @@ func (learner *Learner) SendCheckpointBegin(sendNodeId uint64, uuid uint64,
 
 	return learner.sendCheckpointMessage(sendNodeId, ckMsg, network.Default_SendType)
 }
-
 
 func (learner *Learner) SendCheckpoint(sendNodeId uint64, uuid uint64,
 	sequence uint64, ckInstanceId uint64, ckssum uint32,
@@ -575,7 +571,6 @@ func (learner *Learner) SendCheckpoint(sendNodeId uint64, uuid uint64,
 	return learner.sendCheckpointMessage(sendNodeId, ckMsg, network.Default_SendType)
 }
 
-
 func (learner *Learner) SendCheckpointEnd(sendNodeId uint64, uuid uint64,
 	sequence uint64, ckInstanceId uint64) error {
 	ckMsg := &comm.CheckpointMsg{
@@ -589,9 +584,6 @@ func (learner *Learner) SendCheckpointEnd(sendNodeId uint64, uuid uint64,
 
 	return learner.sendCheckpointMessage(sendNodeId, ckMsg, network.Default_SendType)
 }
-
-
-
 
 func (learner *Learner) OnSendCheckpoint(ckMsg *comm.CheckpointMsg) {
 	log.Info("start uuid %d flag %d sequence %d cpi %d checksum %d smid %d offset %d filepath %s",
@@ -622,14 +614,13 @@ func (learner *Learner) OnSendCheckpoint(ckMsg *comm.CheckpointMsg) {
 	}
 }
 
-
 func (learner *Learner) OnSendCheckpointBegin(ckMsg *comm.CheckpointMsg) error {
 	err := learner.ckReceiver.NewReceiver(ckMsg.GetNodeID(), ckMsg.GetUUID())
 	if err != nil {
 		return err
 	}
 
-	err = learner.ckMnger.SetMinChosenInstanceID(ckMsg.GetCheckpointInstanceID())
+	err = learner.ckMnger.SetMinChosenInstanceId(ckMsg.GetCheckpointInstanceID())
 	if err != nil {
 		return err
 	}
@@ -640,7 +631,6 @@ func (learner *Learner) OnSendCheckpointBegin(ckMsg *comm.CheckpointMsg) error {
 func (learner *Learner) OnSendCheckpointIng(ckMsg *comm.CheckpointMsg) error {
 	return learner.ckReceiver.ReceiveCheckpoint(ckMsg)
 }
-
 
 func (learner *Learner) OnSendCheckpointEnd(ckMsg *comm.CheckpointMsg) error {
 	if !learner.ckReceiver.IsReceiverFinish(ckMsg.GetNodeID(), ckMsg.GetUUID(), ckMsg.GetSequence()) {
@@ -667,7 +657,7 @@ func (learner *Learner) OnSendCheckpointEnd(ckMsg *comm.CheckpointMsg) error {
 
 		// TODO ???
 		err = sm.LoadCheckpointState(learner.config.GetMyGroupId(), tmpDirPath,
-			filePathList, ckMsg.GetCheckpointInstanceID() )
+			filePathList, ckMsg.GetCheckpointInstanceID())
 
 		if err != nil {
 			return err
@@ -676,9 +666,6 @@ func (learner *Learner) OnSendCheckpointEnd(ckMsg *comm.CheckpointMsg) error {
 
 	return nil
 }
-
-
-
 
 func (learner *Learner) SendCheckpointAck(sendNodeId uint64, uuid uint64, sequence uint64, flag int) error {
 	ckMsg := &comm.CheckpointMsg{
@@ -692,8 +679,6 @@ func (learner *Learner) SendCheckpointAck(sendNodeId uint64, uuid uint64, sequen
 	return learner.sendCheckpointMessage(sendNodeId, ckMsg, network.Default_SendType)
 }
 
-
-
 func (learner *Learner) OnSendCheckpointAck(ckMsg *comm.CheckpointMsg) {
 	log.Info("START flag %d", ckMsg.GetFlag())
 
@@ -705,9 +690,6 @@ func (learner *Learner) OnSendCheckpointAck(ckMsg *comm.CheckpointMsg) {
 		}
 	}
 }
-
-
-
 
 func (learner *Learner) GetNewCheckpointSender(sendNodeId uint64) *CheckpointSender {
 	if learner.ckSender != nil {
@@ -724,6 +706,3 @@ func (learner *Learner) GetNewCheckpointSender(sendNodeId uint64) *CheckpointSen
 
 	return nil
 }
-
-
-

@@ -111,13 +111,13 @@ func (checkpointManager *CheckpointManager) SetMaxChosenInstanceID(instanceId ui
 	checkpointManager.maxChosenInstanceId = instanceId
 }
 
-func (checkpointManager *CheckpointManager) SetMinChosenInstanceID(instanceId uint64) error {
+func (checkpointManager *CheckpointManager) SetMinChosenInstanceId(instanceId uint64) error {
 
 	options := &storage.WriteOptions{
 		Sync:true,
 	}
 
-	err := checkpointManager.logStorage.SetMinChoseninstanceId(options, checkpointManager.groupId(), instanceId)
+	err := checkpointManager.logStorage.SetMinChosenInstanceId(options, checkpointManager.groupId(), instanceId)
 	if err != nil {
 		return err
 	}

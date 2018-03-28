@@ -79,7 +79,7 @@ func (learnerSender *LearnerSender) IsImSending() bool {
 		passTime = nowTime - learnerSender.absLastSendTime
 	}
 
-	if passTime >= uint64(comm.GetInsideOptions().GetLearnerSenderPrepareTimeoutMs()){
+	if passTime >= uint64(comm.GetInsideOptions().GetLearnerSenderPrepareTimeoutMs()) {
 		return false
 	}
 
@@ -93,14 +93,14 @@ func (learnerSender *LearnerSender) CheckAck(sendInstanceId uint64) bool {
 		return false
 	}
 
-	for sendInstanceId > learnerSender.ackInstanceID + uint64(comm.GetInsideOptions().GetLearnerSenderAckLead()) {
+	for sendInstanceId > learnerSender.ackInstanceID+uint64(comm.GetInsideOptions().GetLearnerSenderAckLead()) {
 		nowTime := util.NowTimeMs()
 		var passTime uint64 = 0
 		if nowTime > learnerSender.absLastAckTime {
 			passTime = nowTime - learnerSender.absLastAckTime
 		}
 
-		if passTime >= uint64(comm.GetInsideOptions().GetLearnerSenderAckLead()){
+		if passTime >= uint64(comm.GetInsideOptions().GetLearnerSenderAckLead()) {
 			log.Error("Ack timeout, last acktime %d now send instanceid %d",
 				learnerSender.absLastAckTime, sendInstanceId)
 			return false
@@ -210,7 +210,8 @@ func (learnerSender *LearnerSender) SendLearnedValue(beginInstanceId uint64, sen
 }
 
 func (learnerSender *LearnerSender) SendOne(sendInstanceId uint64, sendToNodeId uint64, lastCksum *uint32) error {
-	state, err := learnerSender.paxosLog.ReadState(learnerSender.config.GetMyGroupId(), sendInstanceId)
+	var state = &comm.AcceptorStateData{}
+	err := learnerSender.paxosLog.ReadState(learnerSender.config.GetMyGroupId(), sendInstanceId, state)
 	if err != nil {
 		return err
 	}

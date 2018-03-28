@@ -14,7 +14,6 @@ import (
 	"gphxpaxos/checkpoint"
 	"github.com/golang/protobuf/proto"
 	"gphxpaxos/smbase"
-	"golang.org/x/net/html/atom"
 )
 
 const (
@@ -85,7 +84,6 @@ func NewInstance(config *config.Config, logstorage storage.LogStorage, transport
 
 	nowInstanceId := cpInstanceId
 
-
 	if nowInstanceId < instance.acceptor.GetInstanceId() {
 		err := instance.PlayLog(nowInstanceId, instance.acceptor.GetInstanceId())
 		if err != nil {
@@ -116,7 +114,7 @@ func NewInstance(config *config.Config, logstorage storage.LogStorage, transport
 	maxInstanceId, err := logstorage.GetMaxInstanceId(config.GetMyGroupId())
 	log.Debug("max instance id:%d:%v， propose id:%d", maxInstanceId, err, instance.proposer.GetInstanceId())
 
-	instance.ckMnger.SetMinChosenInstanceID(nowInstanceId)
+	instance.ckMnger.SetMinChosenInstanceId(nowInstanceId)
 	err = instance.InitLastCheckSum()
 	if err != nil {
 		return nil, err
@@ -183,7 +181,6 @@ func (instance *Instance) GetCheckpointReplayer() *checkpoint.Replayer {
 	return instance.ckMnger.GetRelayer()
 }
 
-
 func (instance *Instance) InitLastCheckSum() error {
 	acceptor := instance.acceptor
 	ckMnger := instance.ckMnger
@@ -197,8 +194,8 @@ func (instance *Instance) InitLastCheckSum() error {
 		instance.lastChecksum = 0
 		return nil
 	}
-
-	state, err := instance.paxosLog.ReadState(instance.config.GetMyGroupId(), acceptor.GetInstanceId()-1)
+	var state = &comm.AcceptorStateData{}
+	err := instance.paxosLog.ReadState(instance.config.GetMyGroupId(), acceptor.GetInstanceId()-1, state)
 	if err != nil && err != comm.ErrKeyNotFound {
 		return err
 	}
@@ -222,7 +219,9 @@ func (instance *Instance) PlayLog(beginInstanceId uint64, endInstanceId uint64) 
 	}
 
 	for instanceId := beginInstanceId; instanceId < endInstanceId; instanceId++ {
-		state, err := instance.paxosLog.ReadState(instance.groupId(), instanceId)
+
+		var state = &comm.AcceptorStateData{}
+		err := instance.paxosLog.ReadState(instance.groupId(), instanceId, state)
 		if err != nil {
 			log.Errorf("read instance %d log fail %v", instanceId, err)
 			return err
@@ -237,8 +236,6 @@ func (instance *Instance) PlayLog(beginInstanceId uint64, endInstanceId uint64) 
 
 	return nil
 }
-
-
 
 func (instance *Instance) NowInstanceId() uint64 {
 	instance.mutex.Lock()
@@ -341,8 +338,8 @@ func (instance *Instance) GetInstanceValue(instanceId uint64) ([]byte, int32, er
 	if instanceId >= instance.acceptor.GetInstanceId() {
 		return nil, -1, comm.Paxos_GetInstanceValue_Value_Not_Chosen_Yet
 	}
-
-	state, err := instance.paxosLog.ReadState(instance.groupId(), instanceId)
+	var state = &comm.AcceptorStateData{}
+	err := instance.paxosLog.ReadState(instance.groupId(), instanceId, state)
 	if err != nil {
 		return nil, -1, err
 	}
@@ -586,7 +583,6 @@ func (instance *Instance) OnReceiveMsg(buffer []byte, cmd int32) error {
 	return nil
 }
 
-
 /////////////////////////////////////////////////////////////
 
 func (instance *Instance) AddStateMachine(sm smbase.StateMachine) {
@@ -599,11 +595,6 @@ func (instance *Instance) SMExecute(instanceId uint64, value []byte,
 	return instance.factory.Execute(instance.groupId(), instanceId, value, smCtx)
 }
 
-
-func(instance *Instance) groupId() int {
+func (instance *Instance) groupId() int {
 	return instance.config.GetMyGroupId()
 }
-
-
-
-

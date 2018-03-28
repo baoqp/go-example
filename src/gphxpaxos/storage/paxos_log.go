@@ -2,7 +2,7 @@ package storage
 
 import (
 	"gphxpaxos/comm"
-	"github.com/gogo/protobuf/proto"
+	"github.com/golang/protobuf/proto"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 )
@@ -30,11 +30,11 @@ func (paxosLog *PaxosLog) WriteLog(options *WriteOptions, groupIdx int,
 }
 
 func (paxosLog *PaxosLog) ReadLog(groupIdx int, instanceId uint64) ([]byte, error) {
-	var state comm.AcceptorStateData
-	err := paxosLog.ReadState(groupIdx, instanceId, &state)
+	var state = &comm.AcceptorStateData{}
+	err := paxosLog.ReadState(groupIdx, instanceId, state)
 
 	if err != nil {
-		log.Error("Read log error ")
+		log.Errorf("Read log error ")
 		return nil, err
 	}
 
@@ -46,14 +46,16 @@ func (paxosLog *PaxosLog) ReadLog(groupIdx int, instanceId uint64) ([]byte, erro
 func (paxosLog *PaxosLog) GetMaxInstanceIdFromLog(groupIdx int) (uint64, error) {
 	instanceId, err := paxosLog.logStorage.GetMaxInstanceId(groupIdx)
 	if err != nil {
-		log.Error("db.getmax fail, error:%v", err)
+		log.Errorf("db.getmax fail, error:%v", err)
 		return comm.INVALID_INSTANCEID, err
 	}
 
 	return instanceId, nil
 }
 
-func (paxosLog *PaxosLog) WriteState(options *WriteOptions, groupIdx int, instanceId uint64, state *comm.AcceptorStateData) error {
+func (paxosLog *PaxosLog) WriteState(options *WriteOptions, groupIdx int, instanceId uint64,
+	state *comm.AcceptorStateData) error {
+
 	value, err := proto.Marshal(state)
 	if err != nil {
 		return fmt.Errorf("marshal state error")
@@ -62,24 +64,23 @@ func (paxosLog *PaxosLog) WriteState(options *WriteOptions, groupIdx int, instan
 	err = paxosLog.logStorage.Put(options, groupIdx, instanceId, value)
 
 	if err != nil {
-		log.Error("write state error")
+		log.Errorf("write state error")
 		return err
 	}
 	return nil
 }
 
-func (paxosLog *PaxosLog) ReadState(groupIdx int, instanceId uint64) (comm.AcceptorStateData, error) {
+func (paxosLog *PaxosLog) ReadState(groupIdx int, instanceId uint64, state *comm.AcceptorStateData) (error) {
 	value, err := paxosLog.logStorage.Get(groupIdx, instanceId)
 
 	if err != nil {
-		return nil, err
 	}
-	var state comm.AcceptorStateData
-	err = proto.Unmarshal(value, &state)
+	err = proto.Unmarshal(value, state)
 
 	if err != nil {
-		log.Error("Read State error caused by unmarshal error ")
+		log.Errorf("Read State error caused by unmarshal error ")
+		return err
 	}
 
-	return state, err
+	return nil
 }

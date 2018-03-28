@@ -287,7 +287,7 @@ func (database *Database) GetMaxInstanceId() (uint64, error) {
 }
 
 func (database *Database) GetMaxinstanceIdFileId() (string, uint64, error) {
-	maxinstanceId, err := database.GetMaxinstanceId()
+	maxinstanceId, err := database.GetMaxInstanceId()
 	if err != nil {
 		return "", 0, nil
 	}
@@ -299,7 +299,7 @@ func (database *Database) GetMaxinstanceIdFileId() (string, uint64, error) {
 			return "", 0, comm.ErrKeyNotFound
 		}
 
-		log.Error("leveldb.get fail:%v", err)
+		log.Errorf("leveldb.get fail:%v", err)
 		return "", 0, comm.ErrGetFail
 	}
 
@@ -311,13 +311,13 @@ func (database *Database) rebuildOneIndex(instanceId uint64, fileIdstr string) e
 
 	key := database.genKey(instanceId)
 
-	opt := opt.WriteOptions{
+	opt := &opt.WriteOptions{
 		Sync: false,
 	}
 
-	err := database.leveldb.Put([]byte(key), []byte(fileIdstr), &opt)
+	err := database.leveldb.Put([]byte(key), []byte(fileIdstr), opt)
 	if err != nil {
-		log.Error("leveldb.Put fail, instanceId %d valuelen %d", instanceId, len(fileIdstr))
+		log.Errorf("leveldb.Put fail, instanceId %d valuelen %d", instanceId, len(fileIdstr))
 		return err
 	}
 	return nil
@@ -325,7 +325,7 @@ func (database *Database) rebuildOneIndex(instanceId uint64, fileIdstr string) e
 }
 
 // TODO for what ????
-func (database *Database) SetMinChoseninstanceId(writeOptions *WriteOptions, mininstanceId uint64) error {
+func (database *Database) SetMinChosenInstanceId(writeOptions *WriteOptions, mininstanceId uint64) error {
 	if !database.hasInit {
 		log.Error("no init yet")
 		return comm.ErrDbNotInit
@@ -339,7 +339,7 @@ func (database *Database) SetMinChoseninstanceId(writeOptions *WriteOptions, min
 		return err
 	}
 
-	log.Info("ok, min chosen instanceId %d", mininstanceId)
+	log.Infof("ok, min chosen instanceId %d", mininstanceId)
 	return nil
 }
 
@@ -398,7 +398,7 @@ func (database *Database) getFromLevelDb(instanceId uint64) ([]byte, error) {
 			return nil, comm.ErrKeyNotFound
 		}
 
-		log.Error("leveldb.get fail, instanceId %d", instanceId)
+		log.Errorf("leveldb.get fail, instanceId %d", instanceId)
 		return nil, err
 	}
 
@@ -542,15 +542,15 @@ func (multiDatabase *MultiDatabase) GetMaxinstanceId(groupIdx int) (uint64, erro
 		return -1, fmt.Errorf("groupIdx out of bround")
 	}
 
-	return multiDatabase.dbList[groupIdx].GetMaxinstanceId()
+	return multiDatabase.dbList[groupIdx].GetMaxInstanceId()
 }
 
-func (multiDatabase *MultiDatabase) SetMinChoseninstanceId(writeOptions *WriteOptions, groupIdx int, mininstanceId uint64) error {
+func (multiDatabase *MultiDatabase) SetMinChosenInstanceId(writeOptions *WriteOptions, groupIdx int, mininstanceId uint64) error {
 	if groupIdx > len(multiDatabase.dbList) {
 		return fmt.Errorf("groupIdx out of bround")
 	}
 
-	return multiDatabase.dbList[groupIdx].SetMinChoseninstanceId(writeOptions, mininstanceId)
+	return multiDatabase.dbList[groupIdx].SetMinChosenInstanceId(writeOptions, mininstanceId)
 }
 
 func (multiDatabase *MultiDatabase) GetMinChoseninstanceId(groupIdx int)  (uint64, error) {

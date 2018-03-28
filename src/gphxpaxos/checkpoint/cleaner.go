@@ -128,7 +128,7 @@ func (cleaner *Cleaner) FixMinChosenInstanceID(oldMinChosenInstanceId uint64) er
 	}
 
 	if fixMinChosenInstanceId > oldMinChosenInstanceId {
-		err := cleaner.ckmnger.SetMinChosenInstanceID(fixMinChosenInstanceId)
+		err := cleaner.ckmnger.SetMinChosenInstanceId(fixMinChosenInstanceId)
 		if err != nil {
 			return err
 		}
@@ -147,11 +147,11 @@ func (cleaner *Cleaner) DeleteOne(instanceId uint64) error {
 		return err
 	}
 
-	cleaner.ckmnger.SetMinChosenInstanceID(instanceId)
+	cleaner.ckmnger.SetMinChosenInstanceId(instanceId)
 	if instanceId >= cleaner.lastSaveInstanceId+DELETE_SAVE_INTERVAL {
-		err := cleaner.ckmnger.SetMinChosenInstanceID(instanceId + 1)
+		err := cleaner.ckmnger.SetMinChosenInstanceId(instanceId + 1)
 		if err != nil {
-			log.Error("SetMinChosenInstanceID fail, now delete instanceid %d", instanceId)
+			log.Error("SetMinChosenInstanceId fail, now delete instanceid %d", instanceId)
 			return err
 		}
 		cleaner.lastSaveInstanceId = instanceId

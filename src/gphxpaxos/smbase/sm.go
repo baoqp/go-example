@@ -3,7 +3,7 @@ package smbase
 // 状态机上下文
 type SMCtx struct {
 	SMID int
-	pCtx interface{}
+	PCtx interface{}
 }
 
 // 状态机接口

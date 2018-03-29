@@ -65,8 +65,8 @@ func (systemVSM *SystemVSM) Execute(groupId int, instanceId uint64, value []byte
 	}
 
 	var smret error
-	if ctx != nil && ctx.pCtx != nil {
-		smret = (ctx.pCtx).(error)
+	if ctx != nil && ctx.PCtx != nil {
+		smret = (ctx.PCtx).(error)
 	}
 
 	if variables.GetGid() != 0 && variables.GetGid() != systemVSM.systemVariables.GetGid() {

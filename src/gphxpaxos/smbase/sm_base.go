@@ -43,8 +43,8 @@ func (smFac *SMFac) Execute(groupIdx int, instanceId uint64, paxosValue []byte, 
 
 	if smid == comm.BATCH_PROPOSE_SMID {
 		var batchSMCtx *BatchSMCtx = nil
-		if ctx != nil && ctx.pCtx != nil {
-			batchSMCtx = ctx.pCtx.(*BatchSMCtx)
+		if ctx != nil && ctx.PCtx != nil {
+			batchSMCtx = ctx.PCtx.(*BatchSMCtx)
 		}
 
 		return smFac.BatchExecute(groupIdx, instanceId, body, batchSMCtx)

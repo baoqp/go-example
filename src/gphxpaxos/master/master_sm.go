@@ -7,7 +7,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	"gphxpaxos/util"
-	"github.com/chrislusf/glow/resource/service_discovery/master"
+	"gphxpaxos/smbase"
+	"math"
 )
 
 // 实现InsideSM接口
@@ -30,7 +31,7 @@ func NewMasterStateMachine(groupId int, myNodeId uint64, logstorage storage.LogS
 		myGroupId:            groupId,
 		myNodeId:             myNodeId,
 		mvStore:              NewMasterVariablesStore(logstorage),
-		masterNodeId:         0,
+		masterNodeId:         comm.NULL_NODEID,
 		masterVersion:        uint64(-1),
 		leaseTime:            0,
 		absExpireTime:        0,
@@ -67,7 +68,7 @@ func (masterSM *MasterStateMachine) Init() error {
 func (masterSM *MasterStateMachine) UpdateMasterToStore(masterNodeId uint64, version uint64,
 	leaseTime int32) error {
 
-	variables := comm.MasterVariables{
+	variables := &comm.MasterVariables{
 		MasterNodeid: proto.Uint64(masterNodeId),
 		Version:      proto.Uint64(version),
 		LeaseTime:    proto.Uint32(uint32(leaseTime)),
@@ -112,7 +113,10 @@ func (masterSM *MasterStateMachine) LearnMaster(instanceId uint64, operator *Mas
 		return err
 	}
 
-	// TODO
+	masterChange := false
+	if masterSM.masterNodeId != operator.GetNodeid() {
+		masterChange = true
+	}
 
 	masterSM.masterNodeId = operator.GetNodeid()
 	if masterSM.masterNodeId == masterSM.myNodeId {
@@ -123,8 +127,15 @@ func (masterSM *MasterStateMachine) LearnMaster(instanceId uint64, operator *Mas
 		log.Info("Other be master, absexpiretime %d", masterSM.absExpireTime)
 	}
 
-	masterSM.leaseTime = operator.GetTimeout()
-	masterSM.masterVersion = instance
+	masterSM.leaseTime = int(operator.GetTimeout())
+	masterSM.masterVersion = instanceId
+
+	if masterChange {
+		if masterSM.masterChangeCallback != nil {
+			masterSM.masterChangeCallback(masterSM.myGroupId,
+				&comm.NodeInfo{NodeId: masterSM.masterNodeId}, masterSM.masterVersion) // TODO &NodeInfo{NodeId}
+		}
+	}
 
 	log.Info("OK, masternodeid %d version %d abstimeout %d",
 		masterSM.masterNodeId, masterSM.masterVersion, masterSM.absExpireTime)
@@ -134,6 +145,7 @@ func (masterSM *MasterStateMachine) LearnMaster(instanceId uint64, operator *Mas
 
 func (masterSM *MasterStateMachine) SafeGetMaster(masterNodeId *uint64, masterVersion *uint64) {
 	masterSM.mutex.Lock()
+	defer masterSM.mutex.Unlock()
 
 	if util.NowTimeMs() >= masterSM.absExpireTime {
 		*masterNodeId = comm.NULL_NODEID
@@ -141,7 +153,7 @@ func (masterSM *MasterStateMachine) SafeGetMaster(masterNodeId *uint64, masterVe
 		*masterNodeId = masterSM.masterNodeId
 	}
 	*masterVersion = masterSM.masterVersion
-	masterSM.mutex.Unlock()
+
 }
 
 func (masterSM *MasterStateMachine) GetMaster() uint64 {
@@ -162,10 +174,13 @@ func (masterSM *MasterStateMachine) IsIMMaster() bool {
 	return masterSM.GetMaster() == masterSM.myNodeId
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////
+const MasterOperatorType_Complete = 1
+
 func (masterSM *MasterStateMachine) Execute(groupIdx int32, instanceId uint64, value []byte,
-	ctx *gpaxos.StateMachineContext) error {
-	var operator master.MasterOperator
-	err := proto.Unmarshal(value, &operator)
+	ctx *smbase.SMCtx) error {
+	var operator = &MasterOperator{}
+	err := proto.Unmarshal(value, operator)
 	if err != nil {
 		log.Errorf("oMasterOper data wrong %v", err)
 		return err
@@ -173,8 +188,8 @@ func (masterSM *MasterStateMachine) Execute(groupIdx int32, instanceId uint64, v
 
 	if operator.GetOperator() == MasterOperatorType_Complete {
 		var absMasterTimeout uint64 = 0
-		if ctx != nil && ctx.Context != nil {
-			absMasterTimeout = *(ctx.Context.(*uint64))
+		if ctx != nil && ctx.PCtx != nil {
+			absMasterTimeout = *(ctx.PCtx.(*uint64))
 		}
 
 		log.Info("absmaster timeout %v", absMasterTimeout)
@@ -191,25 +206,28 @@ func (masterSM *MasterStateMachine) Execute(groupIdx int32, instanceId uint64, v
 	return nil
 }
 
-func (masterSM *MasterStateMachine) MakeOpValue(nodeId uint64, version uint64,
+func MakeOpValue(nodeId uint64, version uint64,
 	timeout int32, op uint32) ([]byte, error) {
-	operator := master.MasterOperator{
+	operator := &MasterOperator{
 		Nodeid:   proto.Uint64(nodeId),
 		Version:  proto.Uint64(version),
 		Timeout:  proto.Int32(timeout),
 		Operator: proto.Uint32(op),
-		Sid:      proto.Uint32(util.Rand()),
+		Sid:      proto.Uint32(uint32(util.Rand(math.MaxUint32))),
 	}
 
 	return proto.Marshal(operator)
 }
 
 func (masterSM *MasterStateMachine) GetCheckpointBuffer() ([]byte, error) {
+	masterSM.mutex.Lock()
+	defer masterSM.mutex.Unlock()
+
 	if masterSM.masterVersion == -1 {
 		return nil, nil
 	}
 
-	v := comm.MasterVariables{
+	v := &comm.MasterVariables{
 		MasterNodeid: proto.Uint64(masterSM.masterNodeId),
 		Version:      proto.Uint64(masterSM.masterVersion),
 		LeaseTime:    proto.Uint32(uint32(masterSM.leaseTime)),
@@ -223,8 +241,8 @@ func (masterSM *MasterStateMachine) UpdateByCheckpoint(buffer []byte, change *bo
 		return nil
 	}
 
-	var variables comm.MasterVariables
-	err := proto.Unmarshal(buffer, &variables)
+	var variables = &comm.MasterVariables{}
+	err := proto.Unmarshal(buffer, variables)
 	if err != nil {
 		log.Errorf("Variables.ParseFromArray fail: %v", err)
 		return err
@@ -244,23 +262,51 @@ func (masterSM *MasterStateMachine) UpdateByCheckpoint(buffer []byte, change *bo
 	log.Info("ok, cp.version %d cp.masternodeid %d old.version %d old.masternodeid %d",
 		variables.GetVersion(), variables.GetMasterNodeid(), masterSM.masterVersion, masterSM.masterNodeId)
 
+	masterChange := false
 	masterSM.masterVersion = variables.GetVersion()
+
 	if variables.GetMasterNodeid() == masterSM.myNodeId {
 		masterSM.masterNodeId = comm.NULL_NODEID
 		masterSM.absExpireTime = 0
 	} else {
+		if masterSM.masterNodeId != variables.GetMasterNodeid() {
+			masterChange = true
+		}
+
 		masterSM.masterNodeId = variables.GetMasterNodeid()
 		masterSM.absExpireTime = util.NowTimeMs() + uint64(variables.GetLeaseTime())
+	}
+
+	if masterChange {
+		if masterSM.masterChangeCallback != nil {
+			masterSM.masterChangeCallback(masterSM.myGroupId,
+				&comm.NodeInfo{NodeId: masterSM.masterNodeId}, masterSM.masterVersion) // TODO &NodeInfo{NodeId}
+		}
 	}
 
 	return nil
 }
 
-// TODO
-func (masterStateMachine *MasterStateMachine) GetCheckpointBuffer() (string, error) {
-	return "", nil
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+func (masterSM *MasterStateMachine) BeforeProcess(groupId int, value *[]byte) {
+	masterSM.mutex.Lock()
+	defer masterSM.mutex.Unlock()
+
+	var operator = &MasterOperator{}
+	err := proto.Unmarshal(*value, operator)
+	if err != nil {
+		return
+	}
+
+
+	operator.Lastversion = proto.Uint64(masterSM.masterVersion)
+	*value, err = proto.Marshal(operator) // 类似于interceptor
 }
 
-func (masterStateMachine *MasterStateMachine) UpdateByCheckpoint(systemVariables []byte) (bool, error) {
-	return true, nil
+func (masterSM *MasterStateMachine) NeedCallBeforePropose() bool {
+	return true
 }
+
+

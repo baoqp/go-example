@@ -12,14 +12,14 @@ type Waitlock struct {
 	mutex sync.Mutex
 	inUse bool
 	waitChan chan bool
-	waitCount int32
+	WaitCount int32
 }
 
 func NewWaitlock() *Waitlock {
 	return &Waitlock{
 		inUse:false,
 		waitChan: make(chan bool, 0),
-		waitCount:0,
+		WaitCount:0,
 	}
 }
 
@@ -34,7 +34,7 @@ func (waitLock *Waitlock) Lock(waitMs int) (int, error) {
 		waitLock.inUse = true
 		getLock = true
 	} else {
-		waitLock.waitCount += 1
+		waitLock.WaitCount += 1
 	}
 	waitLock.mutex.Unlock()
 
@@ -53,7 +53,7 @@ func (waitLock *Waitlock) Lock(waitMs int) (int, error) {
 	}
 
 	waitLock.mutex.Lock()
-	waitLock.waitCount -= 1
+	waitLock.WaitCount -= 1
 	waitLock.mutex.Unlock()
 	if timeOut {
 		return -1, Waitlock_Timeout
@@ -66,7 +66,7 @@ func (waitLock *Waitlock) Lock(waitMs int) (int, error) {
 func (waitLock *Waitlock) Unlock() {
 	waitLock.mutex.Lock()
 	waitLock.inUse = false
-	if waitLock.waitCount == 0 {
+	if waitLock.WaitCount == 0 {
 		waitLock.mutex.Unlock()
 		return
 	}

@@ -537,7 +537,7 @@ func (multiDatabase *MultiDatabase) Del(writeOptions *WriteOptions, groupIdx int
 	return multiDatabase.dbList[groupIdx].Del(writeOptions, instanceId)
 }
 
-func (multiDatabase *MultiDatabase) GetMaxinstanceId(groupIdx int) (uint64, error) {
+func (multiDatabase *MultiDatabase) GetMaxInstanceId(groupIdx int) (uint64, error) {
 	if groupIdx > len(multiDatabase.dbList) {
 		return -1, fmt.Errorf("groupIdx out of bround")
 	}
@@ -545,15 +545,14 @@ func (multiDatabase *MultiDatabase) GetMaxinstanceId(groupIdx int) (uint64, erro
 	return multiDatabase.dbList[groupIdx].GetMaxInstanceId()
 }
 
-func (multiDatabase *MultiDatabase) SetMinChosenInstanceId(writeOptions *WriteOptions, groupIdx int, mininstanceId uint64) error {
+func (multiDatabase *MultiDatabase) SetMinChosenInstanceId(writeOptions *WriteOptions, groupIdx int, minInstanceId uint64) error {
 	if groupIdx > len(multiDatabase.dbList) {
 		return fmt.Errorf("groupIdx out of bround")
 	}
-
-	return multiDatabase.dbList[groupIdx].SetMinChosenInstanceId(writeOptions, mininstanceId)
+	return multiDatabase.dbList[groupIdx].SetMinChosenInstanceId(writeOptions, minInstanceId)
 }
 
-func (multiDatabase *MultiDatabase) GetMinChoseninstanceId(groupIdx int)  (uint64, error) {
+func (multiDatabase *MultiDatabase) GetMinChosenInstanceId(groupIdx int) (uint64, error) {
 	if groupIdx > len(multiDatabase.dbList) {
 		return -1, fmt.Errorf("groupIdx out of bround")
 	}
@@ -588,7 +587,7 @@ func (multiDatabase *MultiDatabase) GetSystemVariables(groupIdx int) ([]byte, er
 
 }
 
-func (multiDatabase *MultiDatabase) SetMasterVariables(writeOptions *WriteOptions, groupIdx int, value []byte) error {
+func (multiDatabase *MultiDatabase) SetMasterVariables(writeOptions *WriteOptions, groupIdx int, value []byte) error{
 	if groupIdx > len(multiDatabase.dbList) {
 		return   fmt.Errorf("groupIdx out of bround")
 	}

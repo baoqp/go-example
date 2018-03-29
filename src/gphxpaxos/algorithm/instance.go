@@ -598,3 +598,7 @@ func (instance *Instance) SMExecute(instanceId uint64, value []byte,
 func (instance *Instance) groupId() int {
 	return instance.config.GetMyGroupId()
 }
+
+func (instance *Instance) GetCommitter() *Committer {
+	return instance.committer
+}

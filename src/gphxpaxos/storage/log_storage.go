@@ -36,15 +36,15 @@ type WriteOptions struct {
 type LogStorage interface {
 	GetLogStorageDirPath(groupIdx int) (string, error)
 
-	Get(groupIdx int, instanceID uint64) ([]byte, error)
+	Get(groupIdx int, instanceId uint64) ([]byte, error)
 
-	Put(writeOptions *WriteOptions, groupIdx int, instanceID uint64, value []byte) error
+	Put(writeOptions *WriteOptions, groupIdx int, instanceId uint64, value []byte) error
 
-	Del(writeOptions *WriteOptions, groupIdx int, instanceID uint64) error
+	Del(writeOptions *WriteOptions, groupIdx int, instanceId uint64) error
 
 	GetMaxInstanceId(groupIdx int) (uint64, error)
 
-	SetMinChosenInstanceId(writeOptions *WriteOptions, groupIdx int, minInstanceID uint64) error
+	SetMinChosenInstanceId(writeOptions *WriteOptions, groupIdx int, minInstanceId uint64) error
 
 	GetMinChosenInstanceId(groupIdx int) (uint64, error)
 

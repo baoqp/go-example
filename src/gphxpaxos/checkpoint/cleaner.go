@@ -5,19 +5,15 @@ import (
 	"time"
 	log "github.com/sirupsen/logrus"
 	"gphxpaxos/storage"
-	"gphxpaxos/node"
 	"gphxpaxos/util"
 	"gphxpaxos/comm"
-)
-
-const (
-	DELETE_SAVE_INTERVAL = 10
+	"gphxpaxos/smbase"
 )
 
 type Cleaner struct {
 	config     *config.Config
 	logStorage storage.LogStorage
-	factory    *node.SMFac
+	factory    *smbase.SMFac
 	ckmnger    *CheckpointManager
 
 	holdCount          uint64
@@ -29,7 +25,7 @@ type Cleaner struct {
 	canRun   bool
 }
 
-func NewCleaner(config *config.Config, factory *node.SMFac,
+func NewCleaner(config *config.Config, factory *smbase.SMFac,
 	logStorage storage.LogStorage, mnger *CheckpointManager) *Cleaner {
 	cleaner := &Cleaner{
 		config:     config,
@@ -81,13 +77,13 @@ func (cleaner *Cleaner) main() {
 
 		instanceId := cleaner.ckmnger.GetMinChosenInstanceID()
 		maxInstanceId := cleaner.ckmnger.GetMinChosenInstanceID()
-		cpInstanceId := cleaner.factory.GetCheckpointInstanceID(cleaner.config.GetMyGroupId()) + 1
+		cpInstanceId := cleaner.factory.GetCheckpointInstanceId(cleaner.config.GetMyGroupId()) + 1
 
 		//
 		for instanceId+cleaner.holdCount < cpInstanceId && instanceId+cleaner.holdCount < maxInstanceId {
 			err := cleaner.DeleteOne(instanceId)
 			if err != nil {
-				log.Error("delete system fail, instanceid %d", instanceId)
+				log.Errorf("delete system fail, instanceid %d", instanceId)
 				break
 			}
 
@@ -151,7 +147,7 @@ func (cleaner *Cleaner) DeleteOne(instanceId uint64) error {
 	if instanceId >= cleaner.lastSaveInstanceId+DELETE_SAVE_INTERVAL {
 		err := cleaner.ckmnger.SetMinChosenInstanceId(instanceId + 1)
 		if err != nil {
-			log.Error("SetMinChosenInstanceId fail, now delete instanceid %d", instanceId)
+			log.Errorf("SetMinChosenInstanceId fail, now delete instanceid %d", instanceId)
 			return err
 		}
 		cleaner.lastSaveInstanceId = instanceId
@@ -165,4 +161,13 @@ func (cleaner *Cleaner) DeleteOne(instanceId uint64) error {
 func (cleaner *Cleaner) Continue() {
 	cleaner.isPaused = false
 	cleaner.canRun = true
+}
+
+func (cleaner *Cleaner) SetHoldPaxosLogCount(holdCount uint64) {
+	if holdCount < 300 {
+		cleaner.holdCount = 300
+	} else
+	{
+		cleaner.holdCount = holdCount
+	}
 }

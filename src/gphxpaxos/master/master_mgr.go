@@ -52,6 +52,10 @@ func (mgr *MasterMgr) StopMaster() {
 	}
 }
 
+func (mgr *MasterMgr) RunMaster() {
+	mgr.Start()
+}
+
 func (mgr *MasterMgr) Start() {
 	// TODO run mgr main()
 }

@@ -8,6 +8,7 @@ import (
 	"gphxpaxos/comm"
 	"gphxpaxos/util"
 	"gphxpaxos/config"
+	"gphxpaxos/smbase"
 )
 
 //---------------------------------------CommitContext--------------------------------------------//
@@ -155,7 +156,7 @@ const (
 type Committer struct {
 	config    *config.Config
 	commitCtx *CommitContext
-	factory   *node.SMFac
+	factory   *smbase.SMFac
 
 	instance *Instance
 
@@ -173,13 +174,21 @@ func newCommitter(instance *Instance) *Committer {
 		instance:  instance,
 	}
 }
+func (committer *Committer) SetMaxHoldThreads(maxHoldThreads int32) {
+	committer.waitLock.WaitCount = maxHoldThreads
+}
+
+
+func (committer *Committer) SetTimeoutMs(timeout uint32) {
+	committer.timeoutMs = timeout
+}
 
 func (committer *Committer) NewValue(value []byte) (uint64, error) {
 	committer.timeoutMs = comm.GetInsideOptions().GetMaxCommitTimeoutMs()
-	return committer.newValueGetID(value, nil)
+	return committer.NewValueGetID(value, nil)
 }
 
-func (committer *Committer) newValueGetID(value []byte, context *node.SMCtx) (uint64, error) {
+func (committer *Committer) NewValueGetID(value []byte, context *smbase.SMCtx) (uint64, error) {
 	err := comm.PaxosTryCommitRet_OK
 	var instanceid uint64
 	for i := 0; i < MaxTryCount && committer.timeoutMs > 0; i++ {
@@ -197,8 +206,9 @@ func (committer *Committer) newValueGetID(value []byte, context *node.SMCtx) (ui
 	return instanceid, err
 }
 
-func (committer *Committer) newValueGetIDNoRetry(value []byte, context *node.SMCtx) (uint64, error) {
+func (committer *Committer) newValueGetIDNoRetry(value []byte, context *smbase.SMCtx) (uint64, error) {
 	lockUseTime, err := committer.waitLock.Lock(int(committer.timeoutMs))
+
 	if err == util.Waitlock_Timeout {
 		return 0, comm.PaxosTryCommitRet_WaitTimeout
 	}
@@ -211,7 +221,7 @@ func (committer *Committer) newValueGetIDNoRetry(value []byte, context *node.SMC
 
 	leftTimeoutMs := committer.timeoutMs - uint32(lockUseTime)
 
-	var smid = 0
+	var smid = int32(0)
 	if context != nil {
 		smid = context.SMID
 	}

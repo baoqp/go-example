@@ -99,7 +99,7 @@ func (systemVSM *SystemVSM) GetGid() uint64 {
 	return systemVSM.systemVariables.GetGid()
 }
 
-func (systemVSM *SystemVSM) GetMembership(nodes comm.NodeInfoList, version *uint64) {
+func (systemVSM *SystemVSM) GetMembership(nodes *comm.NodeInfoList, version *uint64) {
 	*version = systemVSM.systemVariables.GetVersion()
 
 	for i := 0; i < len(systemVSM.systemVariables.MemberShip); i++ {
@@ -107,11 +107,11 @@ func (systemVSM *SystemVSM) GetMembership(nodes comm.NodeInfoList, version *uint
 		tmp :=  &comm.NodeInfo{
 			NodeId: node.GetNodeid(),
 		}
-		nodes = append(nodes, tmp)
+		*nodes = append(*nodes, tmp)
 	}
 }
 
-func (systemVSM *SystemVSM) Membership_OPValue(nodes comm.NodeInfoList, version uint64, value []byte) error {
+func (systemVSM *SystemVSM) Membership_OPValue(nodes comm.NodeInfoList, version uint64, value *[]byte) error {
 
 	variables := &comm.SystemVariables{
 		Version: proto.Uint64(version),
@@ -127,7 +127,8 @@ func (systemVSM *SystemVSM) Membership_OPValue(nodes comm.NodeInfoList, version 
 		systemVSM.systemVariables.MemberShip = append(systemVSM.systemVariables.MemberShip, tmp)
 	}
 
-	value, err := proto.Marshal(variables)
+	var err error
+	*value, err = proto.Marshal(variables)
 	if err != nil {
 		log.Errorf("Variables.Serialize fail: %v", err)
 		return err

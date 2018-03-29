@@ -170,7 +170,7 @@ func (smFac *SMFac) AddSM(statemachine StateMachine) {
 	smFac.stateMachines[statemachine.SMID()] = statemachine
 }
 
-func (smFac *SMFac) GetCheckpointInstanceID(groupIdx int) uint64 {
+func (smFac *SMFac) GetCheckpointInstanceId(groupIdx int) uint64 {
 	cpInstanceId := comm.INVALID_INSTANCEID
 	cpInstanceId_Insize := comm.INVALID_INSTANCEID
 	haveUseSm := false

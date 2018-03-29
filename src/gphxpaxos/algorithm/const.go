@@ -26,3 +26,7 @@ const (
 	Pending   // not yet decided.
 )
 
+
+const (
+	DELETE_SAVE_INTERVAL = 10
+)

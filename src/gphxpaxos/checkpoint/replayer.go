@@ -8,12 +8,13 @@ import (
 	"gphxpaxos/node"
 	"gphxpaxos/util"
 	"gphxpaxos/comm"
+	"gphxpaxos/smbase"
 )
 
 type Replayer struct {
 	config   *config.Config
 	paxosLog *storage.PaxosLog
-	factory  *node.SMFac
+	factory  *smbase.SMFac
 	ckmnger  *CheckpointManager
 
 	isPaused bool
@@ -22,7 +23,7 @@ type Replayer struct {
 	canRun   bool
 }
 
-func NewReplayer(config *config.Config, factory *node.SMFac,
+func NewReplayer(config *config.Config, factory *smbase.SMFac,
 	logStorage storage.LogStorage, mnger *CheckpointManager) *Replayer {
 	replayer := &Replayer{
 		config:   config,
@@ -56,7 +57,7 @@ func (replayer *Replayer) Continue() {
 }
 
 func (replayer *Replayer) main() {
-	instanceId := replayer.factory.GetCheckpointInstanceID(replayer.config.GetMyGroupId()) + 1
+	instanceId := replayer.factory.GetCheckpointInstanceId(replayer.config.GetMyGroupId()) + 1
 
 	for {
 		if replayer.isEnd {
@@ -92,7 +93,7 @@ func (replayer *Replayer) PlayOne(instanceId uint64) error {
 
 	err = replayer.factory.ExecuteForCheckpoint(replayer.config.GetMyGroupId(), instanceId, state.GetAcceptedValue())
 	if err != nil {
-		log.Error("checkpoint sm execute fail:%v, instanceid:%d", err, instanceId)
+		log.Errorf("checkpoint sm execute fail:%v, instanceid:%d", err, instanceId)
 		return err
 	}
 

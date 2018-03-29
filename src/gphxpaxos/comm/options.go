@@ -5,7 +5,7 @@ import (
 	"gphxpaxos/util"
 	"gphxpaxos/storage"
 	"gphxpaxos/network"
-	"gphxpaxos/node"
+	"gphxpaxos/smbase"
 )
 
 type NodeInfoList []*NodeInfo
@@ -47,27 +47,27 @@ type MasterChangeCallback func(groupidx int, nodeInfo *NodeInfo, version uint64)
 
 // group的状态机数据
 type GroupSMInfo struct {
-	groupIdx    int
-	SMList      []node.StateMachine
-	isUseMaster bool // 是否使用内置的状态机来进行master选举
+	GroupIdx    int
+	SMList      []smbase.StateMachine
+	IsUseMaster bool // 是否使用内置的状态机来进行master选举
 }
 
 type GroupSMInfoList []*GroupSMInfo
 
 type Options struct {
-	LogStorage               storage.LogStorage
-	LogStoragePath           string
-	Sync                     bool
-	SyncInternal             int
-	NetWork                  network.NetWork
-	GroupCount               int
-	UseMemebership           bool
-	MyNodeInfo               *NodeInfo
-	NodeInfoList             NodeInfoList
-	MembershipChangeCallback *MembershipChangeCallback
-	MasterChangeCallback     *MasterChangeCallback
-	GroupSMINfoList          GroupSMInfoList
-	FollowerNodeInfoList     FollowerNodeInfoList
+	LogStorage                   storage.LogStorage
+	LogStoragePath               string
+	Sync                         bool
+	SyncInternal                 int
+	NetWork                      network.NetWork
+	GroupCount                   int
+	UseMemebership               bool
+	MyNodeInfo                   *NodeInfo
+	NodeInfoList                 NodeInfoList
+	MembershipChangeCallback     MembershipChangeCallback
+	MasterChangeCallback         MasterChangeCallback
+	GroupSMInfoList              GroupSMInfoList
+	FollowerNodeInfoList         FollowerNodeInfoList
 	UseCheckpointReplayer        bool
 	UseBatchPropose              bool
 	OpenChangeValueBeforePropose bool

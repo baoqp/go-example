@@ -92,9 +92,8 @@ var NULL_NODEID uint64 = math.MaxUint64 - 1
 var UINT64_0 = uint64(0)
 
 
-
-
 var (
+	// 用error表示commit结果
 	PaxosTryCommitRet_OK                          = errors.New("PaxosTryCommitRet_OK")
 	PaxosTryCommitRet_Reject                      = errors.New("PaxosTryCommitRet_Reject")
 	PaxosTryCommitRet_Conflict                    = errors.New("PaxosTryCommitRet_Conflict")

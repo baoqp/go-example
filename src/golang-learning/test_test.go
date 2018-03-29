@@ -13,12 +13,21 @@ type A struct {
 	a string
 }
 
-func C(arr *[]int) {
-	*arr = []int{1, 1, 1,}
+
+type B struct {
+	as []*A
+}
+
+func C(b *B) {
+	var len = len(b.as)
+	b.as = b.as[:len-1]
 }
 
 func Test2(t *testing.T) {
-	var arr = []int{0, 0, 0,}
-	C(&arr)
- 	fmt.Println(arr)
+	b := &B{}
+	b.as = make([]*A, 0)
+	b.as = append(b.as, &A{"a1"})
+	fmt.Println(len(b.as))
+	C(b)
+	fmt.Println(len(b.as))
 }

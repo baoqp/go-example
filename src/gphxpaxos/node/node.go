@@ -3,9 +3,14 @@ package node
 import (
 	"gphxpaxos/comm"
 	"gphxpaxos/smbase"
+	"gphxpaxos/master"
 )
 
 type Node struct {
+	groupList []*Group
+	masterList []*master.MasterMgr
+
+
 }
 
 //Base function.

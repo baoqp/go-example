@@ -15,6 +15,7 @@ import (
 
 
 	"io/ioutil"
+	"golang.org/x/text/language"
 )
 
 func Rand(up int) int {
@@ -119,7 +120,7 @@ func NowTimeMs() uint64 {
 	return uint64(time.Now().UnixNano() / 1000000)
 }
 
-func SleepMs(ms int32) {
+func SleepMs(ms uint64) {
 	time.Sleep(time.Duration(ms) * time.Millisecond)
 }
 
@@ -136,6 +137,32 @@ func Inet_addr(ipaddr string) uint32 {
 	ret = uint32(ip4)<<24 + uint32(ip3)<<16 + uint32(ip2)<<8 + uint32(ip1)
 	return ret
 }
+
+
+type TimeStat struct {
+	mTime uint64
+}
+
+func NewTimeStat() *TimeStat {
+	return &TimeStat{mTime: NowTimeMs()}
+}
+
+func(t *TimeStat) Point() uint64 {
+	nowTime := NowTimeMs()
+
+	passTime := uint64(0)
+
+	if nowTime > t.mTime {
+		passTime = nowTime - t.mTime
+	}
+
+	t.mTime = passTime
+
+	return passTime
+}
+
+
+// ---------------------------------对象相关操作---------------------------------//
 
 // dst should be a pointer to struct, src should be a struct
 func CopyStruct(dst interface{}, src interface{}) (err error) {

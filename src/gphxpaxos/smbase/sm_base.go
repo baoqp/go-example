@@ -9,7 +9,7 @@ import (
 )
 
 type BatchSMCtx struct {
-	smCtxList []*SMCtx
+	SMCtxList []*SMCtx
 }
 
 var InvalidPaxosValue = errors.New("invalid paxos value")

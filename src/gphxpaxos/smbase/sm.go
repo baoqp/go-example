@@ -2,18 +2,17 @@ package smbase
 
 // 状态机上下文
 type SMCtx struct {
-	SMID int
+	SMID int32
 	PCtx interface{}
 }
 
 // 状态机接口
 type StateMachine interface {
-
-	Execute(groupIdx int, instanceId uint64, paxosValue[]byte, context *SMCtx) error
+	Execute(groupIdx int, instanceId uint64, paxosValue []byte, context *SMCtx) error
 
 	SMID() int32
 
-	ExecuteForCheckpoint(groupIdx int, instanceId uint64, paxosValue []byte)error
+	ExecuteForCheckpoint(groupIdx int, instanceId uint64, paxosValue []byte) error
 
 	GetCheckpointInstanceID(groupIdx int) uint64
 
@@ -31,11 +30,9 @@ type StateMachine interface {
 	NeedCallBeforePropose() bool
 }
 
-
 type InsideSM interface {
 	StateMachine
 
 	GetCheckpointBuffer(cpBuffer *string) error
 	UpdateByCheckpoint(cpBuffer *string, change bool) error
 }
-

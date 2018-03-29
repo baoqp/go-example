@@ -49,7 +49,7 @@ func (config *Config) GetMyGroupId() int {
 	return config.myGroupId
 }
 
-func (config *Config) GetGid() uint64 {
+func (config *Config) GetGid() uint64 { // TODO ???
 	return 0
 }
 

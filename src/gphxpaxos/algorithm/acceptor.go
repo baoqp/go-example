@@ -104,7 +104,7 @@ func (acceptorState *AcceptorState) Persist(instanceid uint64, lastCheckSum uint
 		return err
 	}
 
-	log.Info("instanceid %d promiseid %d promisenodeid %d "+
+	log.Infof("instanceid %d promiseid %d promisenodeid %d "+
 		"acceptedid %d acceptednodeid %d valuelen %d cksum %d",
 		instanceid, acceptorState.promiseNum.proposalId,
 		acceptorState.promiseNum.nodeId, acceptorState.acceptedNum.proposalId, acceptorState.acceptedNum.nodeId,
@@ -116,12 +116,12 @@ func (acceptorState *AcceptorState) Load() (uint64, error) {
 	myGroupId := acceptorState.config.GetMyGroupId()
 	instanceid, err := acceptorState.paxosLog.GetMaxInstanceIdFromLog(myGroupId)
 	if err != nil && err != comm.ErrKeyNotFound {
-		log.Info("Load max instance id fail:%v", err)
+		log.Infof("Load max instance id fail:%v", err)
 		return comm.INVALID_INSTANCEID, err
 	}
 
 	if err == comm.ErrKeyNotFound {
-		log.Info("empty database")
+		log.Infof("empty database")
 		return 0, nil
 	}
 
@@ -138,7 +138,7 @@ func (acceptorState *AcceptorState) Load() (uint64, error) {
 	acceptorState.acceptValues = state.GetAcceptedValue()
 	acceptorState.checkSum = state.GetChecksum()
 
-	log.Info("instanceid %d promiseid %d promisenodeid %d "+
+	log.Infof("instanceid %d promiseid %d promisenodeid %d "+
 		"acceptedid %d acceptednodeid %d valuelen %d cksum %d",
 		instanceid, acceptorState.promiseNum.proposalId,
 		acceptorState.promiseNum.nodeId, acceptorState.acceptedNum.proposalId, acceptorState.acceptedNum.nodeId,
@@ -173,12 +173,12 @@ func (acceptor *Acceptor) Init() error {
 	}
 
 	if instanceId == 0 {
-		log.Info("empty database")
+		log.Infof("empty database")
 	}
 
 	acceptor.setInstanceId(instanceId)
 
-	log.Info("Acceptor Init OK")
+	log.Infof("Acceptor Init OK")
 
 	return nil
 }
@@ -198,7 +198,7 @@ func (acceptor *Acceptor) GetAcceptorState() *AcceptorState {
 
 // handle paxos prepare msg 处理prepare msg
 func (acceptor *Acceptor) onPrepare(msg *comm.PaxosMsg) error {
-	log.Info("[%s]start prepare msg instanceid %d, from %d, proposalid %d",
+	log.Infof("[%s]start prepare msg instanceid %d, from %d, proposalid %d",
 		acceptor.instance.String(), msg.GetInstanceID(), msg.GetNodeID(), msg.GetProposalID())
 
 	reply := &comm.PaxosMsg{
@@ -248,7 +248,7 @@ func (acceptor *Acceptor) onPrepare(msg *comm.PaxosMsg) error {
 	}
 
 	replyNodeId := msg.GetNodeID()
-	log.Info("[%s]end prepare instanceid %d replynodeid %d", acceptor.instance.String(), acceptor.GetInstanceId(), replyNodeId)
+	log.Infof("[%s]end prepare instanceid %d replynodeid %d", acceptor.instance.String(), acceptor.GetInstanceId(), replyNodeId)
 
 	acceptor.Base.sendPaxosMessage(replyNodeId, reply, network.Default_SendType)
 
@@ -257,7 +257,7 @@ func (acceptor *Acceptor) onPrepare(msg *comm.PaxosMsg) error {
 
 // handle paxos accept msg
 func (acceptor *Acceptor) onAccept(msg *comm.PaxosMsg) error {
-	log.Info("[%s]start accept msg instanceid %d, from %d, proposalid %d, valuelen %d",
+	log.Infof("[%s]start accept msg instanceid %d, from %d, proposalid %d, valuelen %d",
 		acceptor.instance.String(), msg.GetInstanceID(), msg.GetNodeID(), msg.GetProposalID(), len(msg.Value))
 
 	reply := &comm.PaxosMsg{
@@ -299,7 +299,7 @@ func (acceptor *Acceptor) onAccept(msg *comm.PaxosMsg) error {
 	}
 
 	replyNodeId := msg.GetNodeID()
-	log.Info("[%s]end accept instanceid %d replynodeid %d", acceptor.instance.String(), acceptor.GetInstanceId(), replyNodeId)
+	log.Infof("[%s]end accept instanceid %d replynodeid %d", acceptor.instance.String(), acceptor.GetInstanceId(), replyNodeId)
 
 	acceptor.Base.sendPaxosMessage(replyNodeId, reply, network.Default_SendType)
 

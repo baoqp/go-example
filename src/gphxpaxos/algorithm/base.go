@@ -82,8 +82,8 @@ type Base struct {
 }
 
 func init() {
-	HEADLEN_LEN =  binary.Size(uint16(0))
-	CHECKSUM_LEN =  binary.Size(uint32(0))
+	HEADLEN_LEN = binary.Size(uint16(0))
+	CHECKSUM_LEN = binary.Size(uint32(0))
 }
 
 func newBase(instance *Instance) Base {
@@ -121,7 +121,7 @@ func (base *Base) GetLastChecksum() uint32 {
 func (base *Base) packPaxosMsg(paxosMsg *comm.PaxosMsg) ([]byte, *comm.Header, error) {
 	body, err := proto.Marshal(paxosMsg)
 	if err != nil {
-		log.Errorf("paxos msg Marshal fail:%v", err)
+		log.Errorf("paxos msg marshal fail:%v", err)
 		return nil, nil, err
 	}
 
@@ -138,18 +138,17 @@ func (base *Base) packCheckpointMsg(msg *comm.CheckpointMsg) ([]byte, *comm.Head
 	return base.packBaseMsg(body, comm.MsgCmd_CheckpointMsg)
 }
 
-// format: groupId(int) + headerlen(uint16) + header + body + crc32 checksum(uint32)
+// format: groupId(int) + header_len(uint16) + header + body + crc32 checksum(uint32)
 func (base *Base) packBaseMsg(body []byte, cmd int32) (buffer []byte, header *comm.Header, err error) {
 	groupIdx := base.config.GetMyGroupId()
 
 	h := &comm.Header{
-		Cmdid: proto.Int32(cmd),
-		// buffer len + checksum len
-		Gid:     proto.Uint64(base.config.GetGid()),
+		Cmdid:   proto.Int32(cmd),
+		Gid:     proto.Uint64(base.config.GetGid()), // buffer len + checksum len
 		Rid:     proto.Uint64(0),
 		Version: proto.Int32(comm.Version),
 	}
-	header = h
+	*header = *h   // TODO
 
 	headerBuf, err := proto.Marshal(header)
 	if err != nil {
@@ -166,10 +165,10 @@ func (base *Base) packBaseMsg(body []byte, cmd int32) (buffer []byte, header *co
 	buffer = util.AppendBytes(groupIdxBuf, headerLenBuf, headerBuf, body)
 
 	ckSum := util.Crc32(0, buffer, comm.NET_CRC32SKIP)
-	cksumBuf := make([]byte, CHECKSUM_LEN)
-	util.EncodeUint32(cksumBuf, 0, ckSum)
+	ckSumBuf := make([]byte, CHECKSUM_LEN)
+	util.EncodeUint32(ckSumBuf, 0, ckSum)
 
-	buffer = util.AppendBytes(buffer, cksumBuf)
+	buffer = util.AppendBytes(buffer, ckSumBuf)
 
 	return
 }
@@ -190,7 +189,7 @@ func (base *Base) unpackBaseMsg(buffer []byte, header *comm.Header) (body []byte
 	var headLen uint16
 	util.DecodeUint16(buffer, GROUPIDXLEN, &headLen)
 
-	if bufferLen < headStartPos+int(headLen) {
+	if bufferLen < headStartPos + int(headLen) {
 		log.Error("msg head lost ")
 		err = comm.ErrInvalidMsg
 		return
@@ -201,22 +200,22 @@ func (base *Base) unpackBaseMsg(buffer []byte, header *comm.Header) (body []byte
 	proto.Unmarshal(buffer[headStartPos:bodyStartPos], header)
 
 	if bodyStartPos + CHECKSUM_LEN > bufferLen {
-		log.Errorf("no checksum, body start pos %d, buffersize %d \r\n", bodyStartPos, bufferLen)
+		log.Errorf("no checksum, body start pos %d, buffer size %d \r\n", bodyStartPos, bufferLen)
 		err = comm.ErrInvalidMsg
 		return
 	}
 
-	var cksum uint32
-	util.DecodeUint32(buffer, bufferLen-CHECKSUM_LEN, &cksum)
+	var ckSum uint32
+	util.DecodeUint32(buffer, bufferLen-CHECKSUM_LEN, &ckSum)
 
-	calCksum := util.Crc32(0, buffer[:bufferLen-CHECKSUM_LEN], comm.NET_CRC32SKIP)
-	if calCksum != cksum {
-		log.Errorf("data bring cksum %d not equal to cal cksum %d \r\n", cksum, calCksum)
+	calCkSum := util.Crc32(0, buffer[:bufferLen-CHECKSUM_LEN], comm.NET_CRC32SKIP)
+	if calCkSum != ckSum {
+		log.Errorf("data bring ckSum %d not equal to cal ckSum %d \r\n", ckSum, calCkSum)
 		err = comm.ErrInvalidMsg
 		return
 	}
 
-	body = buffer[bodyStartPos : bufferLen-CHECKSUM_LEN]
+	body = buffer[bodyStartPos: bufferLen-CHECKSUM_LEN]
 	err = nil
 	return
 }
@@ -275,27 +274,25 @@ func (base *Base) broadcastMessage(msg *comm.PaxosMsg, runType int, sendType int
 	return err
 }
 
-
 func (base *Base) BroadcastMessageToFollower(msg *comm.PaxosMsg, sendType int) error {
 
-  value, _, err := base.packPaxosMsg(msg)
-  if err != nil {
-    return err
-  }
+	value, _, err := base.packPaxosMsg(msg)
+	if err != nil {
+		return err
+	}
 
-  return base.transport.BroadcastMessageFollower(base.config.GetMyGroupId(), value, sendType)
+	return base.transport.BroadcastMessageFollower(base.config.GetMyGroupId(), value, sendType)
 }
 
 func (base *Base) BroadcastMessageToTempNode(msg *comm.PaxosMsg, sendType int) error {
 
-  value, _, err := base.packPaxosMsg(msg)
-	  if err != nil {
-    return err
-  }
+	value, _, err := base.packPaxosMsg(msg)
+	if err != nil {
+		return err
+	}
 
-  return base.transport.BroadcastMessageTempNode(base.config.GetMyGroupId(), value, sendType)
+	return base.transport.BroadcastMessageTempNode(base.config.GetMyGroupId(), value, sendType)
 }
-
 
 func (base *Base) setAsTestMode() {
 	base.isTestMode = true

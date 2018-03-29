@@ -18,16 +18,15 @@ type B struct {
 	as []*A
 }
 
-func C(b *B) {
-	var len = len(b.as)
-	b.as = b.as[:len-1]
+func C(a *A) {
+	a1 := &A{"a1"}
+	*a = *a1
 }
 
+
+
 func Test2(t *testing.T) {
-	b := &B{}
-	b.as = make([]*A, 0)
-	b.as = append(b.as, &A{"a1"})
-	fmt.Println(len(b.as))
-	C(b)
-	fmt.Println(len(b.as))
+	a := &A{"a"}
+	C(a)
+	fmt.Println(a)
 }

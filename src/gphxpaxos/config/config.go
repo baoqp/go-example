@@ -2,109 +2,188 @@ package config
 
 import (
 	"math"
-	"gphxpaxos/comm"
 	"gphxpaxos/master"
 	"gphxpaxos/util"
 	"gphxpaxos/smbase"
+	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
-// TODO
+const TmpNodeTimeout = 60000
+
 type Config struct {
-	myNodeId  uint64
-	nodeCount int
-	myGroupId int32
+	*Options
 
-	isFollower          bool
-	followToNodeId      uint64
-	systemVSM           *smbase.SystemVSM
-	masterStateMachine  *master.MasterStateMachine
-	myFollowerMap       map[uint64]uint64
-	tmpNodeOnlyForLearn map[uint64]uint64
+	MyNodeId  uint64
+	MyGroupId int32
 
-	options  *Options
-	majorCnt int
+	IsFollower     bool
+	followToNodeId uint64
+
+	SystemVSM          *smbase.SystemVSM
+	MasterStateMachine *master.MasterStateMachine
+
+	MyFollowerMap       map[uint64]uint64
+	TmpNodeOnlyForLearn map[uint64]uint64
+
+	MajorCnt int
 }
 
-func NewConfig(options *Options, groupId int ) *Config {
+func NewConfig(options *Options, groupId int32) *Config {
 	return &Config{
-		options:  options,
-		myGroupId: groupId,
-		majorCnt: int(math.Floor(float64(len(options.NodeInfoList))/2)) + 1,
+		Options:   options,
+		MyGroupId: groupId,
+		MajorCnt:  int(math.Floor(float64(len(options.NodeInfoList))/2)) + 1,
 	}
 }
 
-func (config *Config) GetOptions() *Options {
-	return config.options
+func (config *Config) Init() error {
+	err := config.SystemVSM.Init()
+	if err != nil {
+		return err
+	}
+
+	config.SystemVSM.AddNodeIDList(config.NodeInfoList)
+
+	return nil
 }
 
-func (config *Config) LogSync() bool {
+func (config *Config) CheckConfig() bool {
+
+	if !config.SystemVSM.IsIMInMembership() {
+		logrus.Errorf("my node %d is not in membership", config.MyNodeId)
+		return false
+	}
+
 	return true
 }
 
-func (config *Config) SyncInterval() int32 {
-	return 5
+func (config *Config) GetOptions() *Options {
+	return config.Options
+}
+
+func (config *Config) LogSync() bool {
+	return config.Options.Sync
+}
+
+func (config *Config) SetLogSync(logSync bool) {
+	config.Options.Sync = logSync
+}
+
+func (config *Config) SyncInterval() int {
+	return config.Options.SyncInternal
 }
 
 func (config *Config) GetMyGroupId() int32 {
-	return config.myGroupId
+	return config.MyGroupId
 }
 
-func (config *Config) GetGid() uint64 { // TODO ???
-	return 0
+func (config *Config) GetGroupCount() int {
+	return config.GroupCount
+}
+
+func (config *Config) GetGid() uint64 {
+	return config.SystemVSM.GetGid()
 }
 
 func (config *Config) GetMyNodeId() uint64 {
-	return config.options.MyNodeInfo.NodeId
+	return config.MyNodeId
 }
 
 func (config *Config) GetMajorityCount() int {
-	return config.majorCnt
+	return config.MajorCnt
 }
 
 func (config *Config) GetNodeCount() int {
-	return 0
+	return config.SystemVSM.GetNodeCount()
 }
 
 func (config *Config) IsIMFollower() bool {
-	return config.isFollower
+	return config.IsFollower
 }
 
 func (config *Config) GetFollowToNodeID() uint64 {
 	return config.followToNodeId
 }
 
-func (config *Config) GetMyFollowerCount() int32 {
-	return int32(len(config.myFollowerMap))
+func (config *Config) GetMyFollowerCount() int {
+
+	return len(config.MyFollowerMap)
 }
 
 func (config *Config) AddFollowerNode(followerNodeId uint64) {
-	config.myFollowerMap[followerNodeId] = util.NowTimeMs() + uint64(comm.GetInsideOptions().GetAskforLearnInterval()*3)
+	config.MyFollowerMap[followerNodeId] = util.NowTimeMs() + uint64(GetAskforLearnInterval()*3)
+}
+
+func (config *Config) GetMyFollowerMap() map[uint64]uint64 {
+	nowTime := util.NowTimeMs()
+
+	for k, v := range config.MyFollowerMap {
+		if v < nowTime {
+			log.Errorf("follower %d timeout, nowtimems %d tmpnode last add time %d",
+				k, nowTime, v)
+			delete(config.MyFollowerMap, k)
+		}
+	}
+
+	return config.MyFollowerMap
 }
 
 func (config *Config) AddTmpNodeOnlyForLearn(nodeId uint64) {
+	var nodesInfos = NodeInfoList{}
+	var version uint64
+	config.SystemVSM.GetMembership(&nodesInfos, &version)
 
+	for _, nodeInfo := range nodesInfos {
+		if nodeInfo.NodeId == nodeId {
+			return
+		}
+	}
+	config.TmpNodeOnlyForLearn[nodeId] = util.NowTimeMs() + TmpNodeTimeout
+}
+
+func (config *Config) GetTmpNodeMap() map[uint64]uint64 {
+	nowTime := util.NowTimeMs()
+
+	for k, v := range config.TmpNodeOnlyForLearn {
+		if v < nowTime {
+			log.Errorf("tmpnode %d timeout, nowtimems %d tmpnode last add time %d",
+				k, nowTime, v)
+			delete(config.TmpNodeOnlyForLearn, k)
+		}
+	}
+
+	return config.TmpNodeOnlyForLearn
 }
 
 func (config *Config) GetSystemVSM() *smbase.SystemVSM {
-	return config.systemVSM
+	return config.SystemVSM
 }
 
-func (config *Config) SetMasterSM(masterSM *master.MasterStateMachine) *master.MasterStateMachine {
-	config.masterStateMachine = masterSM
+func (config *Config) SetMasterSM(masterSM *master.MasterStateMachine) {
+	config.MasterStateMachine = masterSM
 }
 
 func (config *Config) GetMasterSM() *master.MasterStateMachine {
-	return config.masterStateMachine
-}
-
-func (config *Config) CheckConfig() bool {
-	return true
+	return config.MasterStateMachine
 }
 
 func (config *Config) GetIsUseMembership() bool {
-	return false
+	return config.UseMemebership
 }
 
 func (config *Config) IsValidNodeID(nodeId uint64) bool {
-	return true
+	return config.SystemVSM.IsValidNodeID(nodeId)
+}
+
+func (config *Config) GetAskforLearnTimeoutMs() int {
+	return 2000
+}
+
+func (config *Config) GetPrepareTimeoutMs() int {
+	return 3000
+}
+
+func (config *Config) GetAcceptTimeoutMs() int {
+	return 3000
 }

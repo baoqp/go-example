@@ -73,6 +73,7 @@ func (ballotNumber *BallotNumber) Reset() {
 }
 
 //-----------------------------------------------Base-------------------------------------------------//
+// acceptor proposer 和 learner 的 “父类”
 type Base struct {
 	instanceId uint64
 	config     *config.Config
@@ -86,14 +87,14 @@ func init() {
 	CHECKSUM_LEN = binary.Size(uint32(0))
 }
 
-func newBase(instance *Instance) Base {
+func newBase(instance *Instance) *Base {
 	var instanceId uint64 = 1
 	maxInstanceId, err := instance.logStorage.GetMaxInstanceId(instance.config.GetMyGroupId())
 	if err == nil {
 		instanceId = maxInstanceId + 1
 	}
 
-	return Base{
+	return &Base{
 		config:     instance.config,
 		transport:  instance.transport,
 		instance:   instance,
@@ -235,7 +236,7 @@ func (base *Base) sendCheckpointMessage(sendToNodeId uint64, msg *comm.Checkpoin
 
 func (base *Base) sendPaxosMessage(sendToNodeId uint64, msg *comm.PaxosMsg, sendType int) error {
 	if sendToNodeId == base.config.GetMyNodeId() {
-		base.instance.OnReceivePaxosMsg(msg, false)
+		base.instance.OnReceivePaxosMsg(msg, false) // 发送给自己
 		return nil
 	}
 

@@ -18,7 +18,7 @@ type AcceptorState struct {
 	checkSum     uint32
 	paxosLog     *storage.PaxosLog
 	config       *config.Config
-	syncTimes    int32
+	syncTimes    int
 }
 
 func newAcceptorState(config *config.Config, paxosLog *storage.PaxosLog) *AcceptorState {
@@ -68,6 +68,7 @@ func (acceptorState *AcceptorState) GetChecksum() uint32 {
 	return acceptorState.checkSum
 }
 
+// AcceptorState 持久化
 func (acceptorState *AcceptorState) Persist(instanceid uint64, lastCheckSum uint32) error {
 	if instanceid > 0 && lastCheckSum == 0 {
 		acceptorState.checkSum = 0
@@ -75,7 +76,7 @@ func (acceptorState *AcceptorState) Persist(instanceid uint64, lastCheckSum uint
 		acceptorState.checkSum = util.Crc32(lastCheckSum, acceptorState.acceptValues, comm.CRC32_SKIP)
 	}
 
-	var state = comm.AcceptorStateData{
+	var state = &comm.AcceptorStateData{
 		InstanceID:     proto.Uint64(instanceid),
 		PromiseID:      proto.Uint64(acceptorState.promiseNum.proposalId),
 		PromiseNodeID:  proto.Uint64(acceptorState.promiseNum.nodeId),
@@ -89,7 +90,7 @@ func (acceptorState *AcceptorState) Persist(instanceid uint64, lastCheckSum uint
 		Sync: acceptorState.config.LogSync(),
 	}
 
-	// TODO 这么写的原因 ??? 不应该每次都刷盘么???
+	// TODO  不应该每次都刷盘么???
 	if options.Sync {
 		acceptorState.syncTimes++
 		if acceptorState.syncTimes > acceptorState.config.SyncInterval() {
@@ -99,22 +100,25 @@ func (acceptorState *AcceptorState) Persist(instanceid uint64, lastCheckSum uint
 		}
 	}
 
-	err := acceptorState.paxosLog.WriteState(&options, acceptorState.config.GetMyGroupId(), instanceid, &state)
+	err := acceptorState.paxosLog.WriteState(&options, acceptorState.config.GetMyGroupId(), instanceid, state)
 	if err != nil {
 		return err
 	}
 
-	log.Infof("instanceid %d promiseid %d promisenodeid %d "+
-		"acceptedid %d acceptednodeid %d valuelen %d cksum %d",
+	log.Infof("instanceId %d promiseId %d promiseNodeId %d "+
+		"acceptedId %d acceptednodeId %d value_len %d ckSum %d",
 		instanceid, acceptorState.promiseNum.proposalId,
 		acceptorState.promiseNum.nodeId, acceptorState.acceptedNum.proposalId, acceptorState.acceptedNum.nodeId,
 		len(acceptorState.acceptValues), acceptorState.checkSum)
+
 	return nil
 }
 
+// 从磁盘中读取已保存的数据
 func (acceptorState *AcceptorState) Load() (uint64, error) {
 	myGroupId := acceptorState.config.GetMyGroupId()
 	instanceid, err := acceptorState.paxosLog.GetMaxInstanceIdFromLog(myGroupId)
+
 	if err != nil && err != comm.ErrKeyNotFound {
 		log.Infof("Load max instance id fail:%v", err)
 		return comm.INVALID_INSTANCEID, err
@@ -138,8 +142,8 @@ func (acceptorState *AcceptorState) Load() (uint64, error) {
 	acceptorState.acceptValues = state.GetAcceptedValue()
 	acceptorState.checkSum = state.GetChecksum()
 
-	log.Infof("instanceid %d promiseid %d promisenodeid %d "+
-		"acceptedid %d acceptednodeid %d valuelen %d cksum %d",
+	log.Infof("instanceId %d promiseId %d promiseNodeId %d "+
+		"acceptedId %d acceptednodeId %d value_len %d ckSum %d",
 		instanceid, acceptorState.promiseNum.proposalId,
 		acceptorState.promiseNum.nodeId, acceptorState.acceptedNum.proposalId, acceptorState.acceptedNum.nodeId,
 		len(acceptorState.acceptValues), acceptorState.checkSum)
@@ -149,7 +153,7 @@ func (acceptorState *AcceptorState) Load() (uint64, error) {
 //----------------------------------------------Acceptor-------------------------------------------//
 
 type Acceptor struct {
-	Base
+	*Base
 
 	config *config.Config
 	state  *AcceptorState
@@ -187,7 +191,7 @@ func (acceptor *Acceptor) InitForNewPaxosInstance() {
 	acceptor.state.init()
 }
 
-func (acceptor *Acceptor) NewInstance(isMyComit bool) {
+func (acceptor *Acceptor) NewInstance() {
 	acceptor.Base.newInstance()
 	acceptor.InitForNewPaxosInstance()
 }
@@ -220,7 +224,7 @@ func (acceptor *Acceptor) onPrepare(msg *comm.PaxosMsg) error {
 	//	}
 	//else
 	//  reject
-	if ballot.GT(state.GetPromiseNum()) { // TODO >= or >
+	if ballot.GT(state.GetPromiseNum()) {
 		log.Debug("[%s][promise]promiseid %d, promisenodeid %d, preacceptedid %d, preacceptednodeid %d",
 			acceptor.instance.String(), state.GetPromiseNum().proposalId, state.GetPromiseNum().nodeId,
 			state.GetAcceptedNum().proposalId, state.GetAcceptedNum().nodeId)

@@ -353,7 +353,7 @@ func (instance *Instance) isCheckSumValid(msg *comm.PaxosMsg) bool {
 }
 
 func (instance *Instance) NewInstance(isMyCommit bool) {
-	instance.acceptor.NewInstance(isMyCommit)
+	instance.acceptor.NewInstance()
 	instance.proposer.NewInstance(isMyCommit)
 	instance.learner.NewInstance(isMyCommit)
 }

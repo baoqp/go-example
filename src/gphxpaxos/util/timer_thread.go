@@ -76,6 +76,7 @@ func (timerThread *TimerThread) Stop() {
 	timerThread.end = true
 }
 
+// TODO 从处理逻辑中可以看出timerThread中各个Timer的timeOut并不是排序的，感觉有点问题。 完成一个类似于Java DelayQueue的数据结构
 func (timerThread *TimerThread) main() {
 	for !timerThread.end {
 		// fire every 1 ms
@@ -97,9 +98,8 @@ func (timerThread *TimerThread) main() {
 			timerThread.fireTimeout(timer)
 		}
 
-		// TODO 这个逻辑，每个加入的timer的timeOut都应该相同吧，可以参考java DelayQueue
 		// if current timer list is empty, then exchange two list
-		if timerThread.currentTimerList.Len() == 0 {
+		//if timerThread.currentTimerList.Len() == 0 {
 			timerThread.mutex.Lock()
 			tmp := timerThread.currentTimerList
 			timerThread.currentTimerList = timerThread.newTimerList
@@ -107,7 +107,7 @@ func (timerThread *TimerThread) main() {
 			timerThread.mutex.Unlock()
 			// check timeout agant
 			goto again
-		}
+		//}
 	}
 }
 
@@ -129,6 +129,10 @@ func (timerThread *TimerThread) AddTimer(timeoutMs uint32, timeType int, obj Tim
 	timer := newTimer(timerThread.nowTimerId, absTime, timeType, obj)
 	timerId := timerThread.nowTimerId
 	timerThread.nowTimerId += 1
+
+	for _, atimer := range timerThread.newTimerList {
+
+	}
 
 	timerThread.newTimerList.PushBack(timer)
 

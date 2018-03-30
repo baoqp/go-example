@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// 统计reply数据
+// 统计各个acceptor返回的数据
 type MsgCounter struct {
 	config *config.Config
 
@@ -31,20 +31,20 @@ func (msgCounter *MsgCounter) StartNewRound() {
 
 func (msgCounter *MsgCounter) AddReceive(nodeId uint64) {
 	msgCounter.mutex.Lock()
+	defer msgCounter.mutex.Unlock()
 	msgCounter.receiveMsgNodeIDMaps[nodeId] = true
-	msgCounter.mutex.Unlock()
 }
 
 func (msgCounter *MsgCounter) AddReject(nodeId uint64) {
 	msgCounter.mutex.Lock()
+	defer msgCounter.mutex.Unlock()
 	msgCounter.rejectMsgNodeIDMaps[nodeId] = true
-	msgCounter.mutex.Unlock()
 }
 
 func (msgCounter *MsgCounter) AddPromiseOrAccept(nodeId uint64) {
 	msgCounter.mutex.Lock()
+	defer msgCounter.mutex.Unlock()
 	msgCounter.promiseOrAcceptMsgNodeIDMaps[nodeId] = true
-	msgCounter.mutex.Unlock()
 }
 
 func (msgCounter *MsgCounter) IsPassedOnThisRound() bool {

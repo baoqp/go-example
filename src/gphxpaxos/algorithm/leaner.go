@@ -8,8 +8,8 @@ import (
 	"github.com/golang/protobuf/proto"
 	"gphxpaxos/util"
 	"gphxpaxos/checkpoint"
-	"gphxpaxos/node"
 	"gphxpaxos/network"
+	"gphxpaxos/smbase"
 )
 
 //-------------------------------------------------LearnerState-----------------------------------------//
@@ -110,7 +110,7 @@ type Learner struct {
 	ckReceiver                      *CheckpointReceiver
 	ckSender                        *CheckpointSender
 	ckMnger                         *checkpoint.CheckpointManager
-	factory                         *node.SMFac
+	factory                         *smbase.SMFac
 }
 
 func NewLearner(instance *Instance) *Learner {
@@ -190,7 +190,7 @@ func (learner *Learner) Reset_AskforLearn_Noop(timeout int) {
 }
 
 func (learner *Learner) AskforLearn_Noop() {
-	learner.Reset_AskforLearn_Noop(comm.GetInsideOptions().GetAskforLearnInterval())
+	learner.Reset_AskforLearn_Noop(config.GetAskforLearnInterval())
 	learner.isImLearning = false
 	learner.askforLearn()
 }
@@ -309,7 +309,8 @@ func (learner *Learner) OnSendNowInstanceId(msg *comm.PaxosMsg) {
 	}
 
 	if masterSM := learner.config.GetMasterSM(); masterSM != nil {
-		masterVariablesChange, err := masterSM.UpdateByCheckpoint(msg.MasterVariables)
+		var masterVariablesChange bool // TODO UpdateByCheckpoint 好像并没有用到这个参数
+		err := masterSM.UpdateByCheckpoint(msg.MasterVariables, &masterVariablesChange)
 		if masterVariablesChange && err == nil {
 			log.Info("systemVariables changed!, all thing need to reflesh, so skip this msg")
 			return
@@ -403,7 +404,7 @@ func (learner *Learner) OnSendLearnValue(msg *comm.PaxosMsg) {
 	}
 
 	if msg.GetFlag() == comm.PaxosMsgFlagType_SendLearnValue_NeedAck {
-		learner.Reset_AskforLearn_Noop(comm.GetInsideOptions().GetAskforLearnInterval())
+		learner.Reset_AskforLearn_Noop(config.GetAskforLearnInterval())
 		learner.SendLearnValue_Ack(msg.GetNodeID())
 	}
 }
@@ -413,7 +414,7 @@ func (learner *Learner) OnSendLearnValue(msg *comm.PaxosMsg) {
 func (learner *Learner) SendLearnValue_Ack(sendNodeId uint64) {
 	log.Infof("START LastAck.Instanceid %d Now.Instanceid %d", learner.lastAckInstanceId, learner.GetInstanceId())
 
-	if learner.GetInstanceId() < learner.lastAckInstanceId+uint64(comm.GetInsideOptions().GetLearnerReceiver_Ack_Lead()) {
+	if learner.GetInstanceId() < learner.lastAckInstanceId+uint64(config.GetLearnerReceiver_Ack_Lead()) {
 		log.Info("no need ack")
 		return
 	}

@@ -3,26 +3,29 @@ package util
 import (
 	"testing"
 
-	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	"gphxpaxos/comm"
-	"gphxpaxos/util"
-	"google.golang.org/grpc/balancer/base"
+	"encoding/binary"
+	"fmt"
 )
+
+var GROUPIDXLEN = binary.Size(int32(0))
+var HEADLEN_LEN = binary.Size(uint16(0))
+var CHECKSUM_LEN = binary.Size(uint32(0))
 
 // format: groupId(int) + header_len(uint16) + header + body + crc32 checksum(uint32)
 func packBaseMsg(body []byte, cmd int32) (buffer []byte, header *comm.Header, err error) {
-	groupIdx := 5
+	groupIdx := int32(5)
 	gid := uint64(10)
 
-	h := &comm.Header{
+	header = &comm.Header{
 		Cmdid:   proto.Int32(cmd),
 		Gid:     proto.Uint64(gid), // buffer len + checksum len
 		Rid:     proto.Uint64(0),
 		Version: proto.Int32(comm.Version),
 	}
-	*header = *h // TODO
+
 
 	headerBuf, err := proto.Marshal(header)
 	if err != nil {
@@ -31,18 +34,18 @@ func packBaseMsg(body []byte, cmd int32) (buffer []byte, header *comm.Header, er
 	}
 
 	groupIdxBuf := make([]byte, GROUPIDXLEN)
-	util.EncodeInt32(groupIdxBuf, 0, int32(groupIdx))
+	EncodeInt32(groupIdxBuf, 0, groupIdx)
 
 	headerLenBuf := make([] byte, HEADLEN_LEN)
-	util.EncodeUint16(headerLenBuf, 0, uint16(len(headerBuf)))
+	EncodeUint16(headerLenBuf, 0, uint16(len(headerBuf)))
 
-	buffer = util.AppendBytes(groupIdxBuf, headerLenBuf, headerBuf, body)
+	buffer = AppendBytes(groupIdxBuf, headerLenBuf, headerBuf, body)
 
-	ckSum := util.Crc32(0, buffer, comm.NET_CRC32SKIP)
+	ckSum := Crc32(0, buffer, comm.NET_CRC32SKIP)
 	ckSumBuf := make([]byte, CHECKSUM_LEN)
-	util.EncodeUint32(ckSumBuf, 0, ckSum)
+	EncodeUint32(ckSumBuf, 0, ckSum)
 
-	buffer = util.AppendBytes(buffer, ckSumBuf)
+	buffer = AppendBytes(buffer, ckSumBuf)
 
 	return
 }
@@ -61,7 +64,7 @@ func unpackBaseMsg(buffer []byte, header *comm.Header) (body []byte, err error) 
 	}
 
 	var headLen uint16
-	util.DecodeUint16(buffer, GROUPIDXLEN, &headLen)
+	DecodeUint16(buffer, GROUPIDXLEN, &headLen)
 
 	if bufferLen < headStartPos+int(headLen) {
 		log.Error("msg head lost ")
@@ -80,9 +83,9 @@ func unpackBaseMsg(buffer []byte, header *comm.Header) (body []byte, err error) 
 	}
 
 	var ckSum uint32
-	util.DecodeUint32(buffer, bufferLen-CHECKSUM_LEN, &ckSum)
+	DecodeUint32(buffer, bufferLen-CHECKSUM_LEN, &ckSum)
 
-	calCkSum := util.Crc32(0, buffer[:bufferLen-CHECKSUM_LEN], comm.NET_CRC32SKIP)
+	calCkSum := Crc32(0, buffer[:bufferLen-CHECKSUM_LEN], comm.NET_CRC32SKIP)
 	if calCkSum != ckSum {
 		log.Errorf("data bring ckSum %d not equal to cal ckSum %d \r\n", ckSum, calCkSum)
 		err = comm.ErrInvalidMsg
@@ -95,7 +98,25 @@ func unpackBaseMsg(buffer []byte, header *comm.Header) (body []byte, err error) 
 }
 
 func TestUtil(t *testing.T) {
-	paths, _ := IterDir("D:\\tmp\\seaweedfs")
-	fmt.Println(paths)
+	body := []byte("hello world")
+	cmd := int32(8)
+
+	buffer, header, err := packBaseMsg(body, cmd)
+	fmt.Println(header)
+
+	if err != nil {
+		fmt.Println("packmsg error ")
+	}
+
+	header_ := &comm.Header{}
+	body_ ,err := unpackBaseMsg(buffer, header_)
+	if err != nil {
+		fmt.Println("unpackmsg error ")
+	}
+
+	fmt.Println(string(body_))
+	fmt.Println(header_)
+
+	fmt.Println(uint64(-1))
 
 }

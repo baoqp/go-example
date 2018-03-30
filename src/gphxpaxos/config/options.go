@@ -1,4 +1,4 @@
-package comm
+package config
 
 import (
 	"fmt"
@@ -42,12 +42,12 @@ type FollowerNodeInfo struct {
 }
 
 // 两个回调函数
-type MembershipChangeCallback func(groupidx int, list NodeInfoList)
-type MasterChangeCallback func(groupidx int, nodeInfo *NodeInfo, version uint64)
+type MembershipChangeCallback func(groupidx int32, list NodeInfoList)
+type MasterChangeCallback func(groupidx int32, nodeInfo *NodeInfo, version uint64)
 
 // group的状态机数据
 type GroupSMInfo struct {
-	GroupIdx    int
+	GroupIdx    int32
 	SMList      []smbase.StateMachine
 	IsUseMaster bool // 是否使用内置的状态机来进行master选举
 }

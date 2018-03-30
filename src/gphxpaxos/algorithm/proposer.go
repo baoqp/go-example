@@ -178,8 +178,8 @@ func (proposer *Proposer) NewValue(value []byte, timeOutMs uint32) {
 		proposer.state.SetValue(value)
 	}
 
-	proposer.lastPrepareTimeoutMs = comm.GetInsideOptions().GetStartPrepareTimeoutMs()
-	proposer.lastAcceptTimeoutMs = comm.GetInsideOptions().GetStartAcceptTimeoutMs()
+	proposer.lastPrepareTimeoutMs = config.GetStartPrepareTimeoutMs()
+	proposer.lastAcceptTimeoutMs = config.GetStartAcceptTimeoutMs()
 	proposer.timeOutMs = timeOutMs
 	proposer.lastStartTimeMs = util.NowTimeMs()
 
@@ -270,8 +270,8 @@ func (proposer *Proposer) addPrepareTimer(timeOutMs uint32) {
 
 	proposer.prepareTimerId = proposer.timerThread.AddTimer(timeOutMs, comm.Timer_Proposer_Prepare_Timeout, proposer.instance)
 	proposer.lastPrepareTimeoutMs *= 2
-	if proposer.lastPrepareTimeoutMs > comm.GetInsideOptions().GetMaxPrepareTimeoutMs() {
-		proposer.lastPrepareTimeoutMs = comm.GetInsideOptions().GetMaxPrepareTimeoutMs()
+	if proposer.lastPrepareTimeoutMs > config.GetMaxPrepareTimeoutMs() {
+		proposer.lastPrepareTimeoutMs = config.GetMaxPrepareTimeoutMs()
 	}
 }
 
@@ -286,8 +286,8 @@ func (proposer *Proposer) addAcceptTimer(timeOutMs uint32) {
 	}
 	proposer.acceptTimerId = proposer.timerThread.AddTimer(timeOutMs, comm.Timer_Proposer_Accept_Timeout, proposer.instance)
 	proposer.lastAcceptTimeoutMs *= 2
-	if proposer.lastAcceptTimeoutMs > comm.GetInsideOptions().GetMaxAcceptTimeoutMs() {
-		proposer.lastAcceptTimeoutMs = comm.GetInsideOptions().GetMaxAcceptTimeoutMs()
+	if proposer.lastAcceptTimeoutMs > config.GetMaxAcceptTimeoutMs() {
+		proposer.lastAcceptTimeoutMs = config.GetMaxAcceptTimeoutMs()
 	}
 }
 

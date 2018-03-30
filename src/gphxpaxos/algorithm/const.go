@@ -2,7 +2,7 @@ package algorithm
 
 import "encoding/binary"
 
-var GROUPIDXLEN = binary.Size(int(0))
+var GROUPIDXLEN = binary.Size(int32(0))
 var HEADLEN_LEN = binary.Size(uint16(0))
 var CHECKSUM_LEN = binary.Size(uint32(0))
 
@@ -27,6 +27,4 @@ const (
 )
 
 
-const (
-	DELETE_SAVE_INTERVAL = 10
-)
+

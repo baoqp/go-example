@@ -19,18 +19,18 @@ func NewCommunicate(config *config.Config, nodeId uint64, network NetWork) *Comm
 
 
 // TODO
-func(c *Communicate) SendMessage(groupIdx int, sendToNodeId uint64, value []byte, sendType int) error {
+func(c *Communicate) SendMessage(groupIdx int32, sendToNodeId uint64, value []byte, sendType int) error {
 	return nil
 }
 
-func(c *Communicate) BroadcastMessage(groupIdx int, value []byte, sendType int) error{
+func(c *Communicate) BroadcastMessage(groupIdx int32, value []byte, sendType int) error{
 	return nil
 }
 
-func(c *Communicate) BroadcastMessageFollower(groupIdx int, value []byte, sendType int) error{
+func(c *Communicate) BroadcastMessageFollower(groupIdx int32, value []byte, sendType int) error{
 	return nil
 }
 
-func(c *Communicate) BroadcastMessageTempNode(groupIdx int, value []byte, sendType int) error{
+func(c *Communicate) BroadcastMessageTempNode(groupIdx int32, value []byte, sendType int) error{
 	return nil
 }

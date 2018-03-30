@@ -4,7 +4,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"bytes"
 	"sync"
-	"gphxpaxos/node"
 	"gphxpaxos/comm"
 	"gphxpaxos/util"
 	"gphxpaxos/config"
@@ -16,7 +15,7 @@ type CommitContext struct {
 	instanceId          uint64
 	commitEnd           bool
 	value               []byte
-	stateMachineContext *node.SMCtx
+	stateMachineContext *smbase.SMCtx
 	mutex               sync.Mutex
 	commitRet           error
 
@@ -43,7 +42,7 @@ func newCommitContext(instance *Instance) *CommitContext {
 	return context
 }
 
-func (commitContext *CommitContext) newCommit(value []byte, timeoutMs uint32, context *node.SMCtx) {
+func (commitContext *CommitContext) newCommit(value []byte, timeoutMs uint32, context *smbase.SMCtx) {
 	commitContext.mutex.Lock()
 
 	commitContext.instanceId = comm.INVALID_INSTANCEID
@@ -73,7 +72,7 @@ func (commitContext *CommitContext) getCommitValue() [] byte {
 	return commitContext.value
 }
 
-func (commitContext *CommitContext) IsMyCommit(nodeId uint64, instanceId uint64, learnValue []byte) (bool, *node.SMCtx) {
+func (commitContext *CommitContext) IsMyCommit(nodeId uint64, instanceId uint64, learnValue []byte) (bool, *smbase.SMCtx) {
 	commitContext.mutex.Lock()
 	defer commitContext.mutex.Unlock()
 
@@ -82,7 +81,7 @@ func (commitContext *CommitContext) IsMyCommit(nodeId uint64, instanceId uint64,
 		return false, nil
 	}
 
-	var ctx *node.SMCtx
+	var ctx *smbase.SMCtx
 	isMyCommit := false
 
 	if !commitContext.commitEnd && commitContext.instanceId == instanceId {
@@ -184,7 +183,7 @@ func (committer *Committer) SetTimeoutMs(timeout uint32) {
 }
 
 func (committer *Committer) NewValue(value []byte) (uint64, error) {
-	committer.timeoutMs = comm.GetInsideOptions().GetMaxCommitTimeoutMs()
+	committer.timeoutMs = config.GetMaxCommitTimeoutMs()
 	return committer.NewValueGetID(value, nil)
 }
 

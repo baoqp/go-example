@@ -6,20 +6,22 @@ import (
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"errors"
+
+	"gphxpaxos/config"
 )
 
 // 实现InsideSM接口
 type SystemVSM struct {
-	myGroupId                int
-	systemVariables           *comm.SystemVariables
+	myGroupId                int32
+	systemVariables          *comm.SystemVariables
 	systemStore              *storage.SystemVariablesStore
 	nodeIdSet                map[uint64]struct{} // 需要一个set, 使用map表示
 	myNodeId                 uint64
-	membershipChangeCallback comm.MembershipChangeCallback
+	membershipChangeCallback config.MembershipChangeCallback
 }
 
-func NewSystemVSM(groupId int, myNodeId uint64, logstorage storage.LogStorage,
-	membershipChangeCallback comm.MembershipChangeCallback) *SystemVSM {
+func NewSystemVSM(groupId int32, myNodeId uint64, logstorage storage.LogStorage,
+	membershipChangeCallback config.MembershipChangeCallback) *SystemVSM {
 
 	return &SystemVSM{
 		myGroupId:                groupId,
@@ -36,8 +38,8 @@ func (systemVSM *SystemVSM) Init() error {
 		return err
 	} else if err != nil && err == comm.ErrKeyNotFound {
 		systemVSM.systemVariables.Gid = proto.Uint64(0)
-		systemVSM.systemVariables.Version = proto.Uint64(-1) // TODO set uint64 = -1 ???
-		log.Info("variables not exist")
+		systemVSM.systemVariables.Version = proto.Uint64(comm.INVALID_VERSION)
+		log.Infof("variables not exist")
 	} else {
 		systemVSM.RefleshNodeID()
 	}
@@ -45,7 +47,7 @@ func (systemVSM *SystemVSM) Init() error {
 }
 
 func (systemVSM *SystemVSM) UpdateSystemVariables(variables *comm.SystemVariables) error {
-	writeOpt := &storage.WriteOptions{Sync:true}
+	writeOpt := &storage.WriteOptions{Sync: true}
 	err := systemVSM.systemStore.Write(writeOpt, systemVSM.myGroupId, variables)
 	if err != nil {
 		return err
@@ -55,8 +57,7 @@ func (systemVSM *SystemVSM) UpdateSystemVariables(variables *comm.SystemVariable
 	return nil
 }
 
-
-func (systemVSM *SystemVSM) Execute(groupId int, instanceId uint64, value []byte, ctx *SMCtx) error {
+func (systemVSM *SystemVSM) Execute(groupId int32, instanceId uint64, value []byte, ctx *SMCtx) error {
 	var variables = &comm.SystemVariables{}
 	err := proto.Unmarshal(value, variables)
 	if err != nil {
@@ -94,24 +95,23 @@ func (systemVSM *SystemVSM) Execute(groupId int, instanceId uint64, value []byte
 
 }
 
-
 func (systemVSM *SystemVSM) GetGid() uint64 {
 	return systemVSM.systemVariables.GetGid()
 }
 
-func (systemVSM *SystemVSM) GetMembership(nodes *comm.NodeInfoList, version *uint64) {
+func (systemVSM *SystemVSM) GetMembership(nodes *config.NodeInfoList, version *uint64) {
 	*version = systemVSM.systemVariables.GetVersion()
 
 	for i := 0; i < len(systemVSM.systemVariables.MemberShip); i++ {
 		node := systemVSM.systemVariables.MemberShip[i]
-		tmp :=  &comm.NodeInfo{
+		tmp := &config.NodeInfo{
 			NodeId: node.GetNodeid(),
 		}
 		*nodes = append(*nodes, tmp)
 	}
 }
 
-func (systemVSM *SystemVSM) Membership_OPValue(nodes comm.NodeInfoList, version uint64, value *[]byte) error {
+func (systemVSM *SystemVSM) Membership_OPValue(nodes config.NodeInfoList, version uint64, value *[]byte) error {
 
 	variables := &comm.SystemVariables{
 		Version: proto.Uint64(version),
@@ -137,8 +137,7 @@ func (systemVSM *SystemVSM) Membership_OPValue(nodes comm.NodeInfoList, version 
 	return nil
 }
 
-
-func (systemVSM *SystemVSM) CreateGid_OPValue(gid uint64) (  []byte, error) {
+func (systemVSM *SystemVSM) CreateGid_OPValue(gid uint64) ([]byte, error) {
 	variables := proto.Clone(systemVSM.systemVariables).(*comm.SystemVariables)
 	variables.Gid = proto.Uint64(gid)
 	value, err := proto.Marshal(variables)
@@ -149,8 +148,7 @@ func (systemVSM *SystemVSM) CreateGid_OPValue(gid uint64) (  []byte, error) {
 	return value, nil
 }
 
-
-func (systemVSM *SystemVSM) AddNodeIDList(nodes comm.NodeInfoList) {
+func (systemVSM *SystemVSM) AddNodeIDList(nodes config.NodeInfoList) {
 	if systemVSM.systemVariables.GetGid() != 0 {
 		return
 	}
@@ -170,20 +168,19 @@ func (systemVSM *SystemVSM) AddNodeIDList(nodes comm.NodeInfoList) {
 	systemVSM.RefleshNodeID()
 }
 
-
 func (systemVSM *SystemVSM) RefleshNodeID() {
 	systemVSM.nodeIdSet = make(map[uint64]struct{})
-	var infolist []*comm.NodeInfo
+	var infolist []*config.NodeInfo
 	membership := systemVSM.systemVariables.MemberShip
 	for i := 0; i < len(membership); i++ {
 		paxosNodeInfo := membership[i]
-		tmpNode := &comm.NodeInfo{NodeId: *paxosNodeInfo.Nodeid} // TODO
+		tmpNode := &config.NodeInfo{NodeId: *paxosNodeInfo.Nodeid} // TODO
 		systemVSM.nodeIdSet[tmpNode.NodeId] = struct{}{}
 		infolist = append(infolist, tmpNode)
 	}
 
 	if systemVSM.membershipChangeCallback != nil {
-		systemVSM.membershipChangeCallback(systemVSM.myGroupId, comm.NodeInfoList(infolist))
+		systemVSM.membershipChangeCallback(systemVSM.myGroupId, config.NodeInfoList(infolist))
 	}
 
 }
@@ -193,9 +190,8 @@ func (systemVSM *SystemVSM) GetNodeCount() int {
 }
 
 func (systemVSM *SystemVSM) GetMajorityCount() int {
-	return int(systemVSM.GetNodeCount() / 2.0 + 1)
+	return int(systemVSM.GetNodeCount()/2.0 + 1)
 }
-
 
 func (systemVSM *SystemVSM) IsValidNodeID(nodeId uint64) bool {
 	if systemVSM.systemVariables.GetGid() == 0 {
@@ -211,11 +207,10 @@ func (systemVSM *SystemVSM) IsIMInMembership() bool {
 	return ok
 }
 
-
 func (systemVSM *SystemVSM) GetCheckpointBuffer() ([]byte, error) {
 	// TODO 使用的地方需要判断是否为空
 	if systemVSM.systemVariables.GetVersion() == uint64(-1) ||
-		systemVSM.systemVariables.GetGid() == 0{
+		systemVSM.systemVariables.GetGid() == 0 {
 
 		return nil, nil
 	}
@@ -244,7 +239,7 @@ func (systemVSM *SystemVSM) UpdateByCheckpoint(value []byte) (bool, error) {
 		return false, err
 	}
 
-	if *varaible.Version == uint64(-1) {
+	if *varaible.Version == comm.INVALID_VERSION {
 		return false, VersionGidErr
 	}
 
@@ -252,7 +247,7 @@ func (systemVSM *SystemVSM) UpdateByCheckpoint(value []byte) (bool, error) {
 		return false, VersionGidErr
 	}
 
-	if systemVSM.systemVariables.GetVersion() != uint64(-1) &&
+	if systemVSM.systemVariables.GetVersion() != comm.INVALID_VERSION &&
 		*varaible.Version <= *systemVSM.systemVariables.Version {
 		return false, nil
 	}

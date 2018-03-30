@@ -142,13 +142,13 @@ func (base *Base) packCheckpointMsg(msg *comm.CheckpointMsg) ([]byte, *comm.Head
 func (base *Base) packBaseMsg(body []byte, cmd int32) (buffer []byte, header *comm.Header, err error) {
 	groupIdx := base.config.GetMyGroupId()
 
-	h := &comm.Header{
+	header = &comm.Header{
 		Cmdid:   proto.Int32(cmd),
-		Gid:     proto.Uint64(base.config.GetGid()), // buffer len + checksum len
+		Gid:     proto.Uint64(base.config.GetGid()),
 		Rid:     proto.Uint64(0),
 		Version: proto.Int32(comm.Version),
 	}
-	*header = *h   // TODO
+
 
 	headerBuf, err := proto.Marshal(header)
 	if err != nil {
@@ -157,7 +157,7 @@ func (base *Base) packBaseMsg(body []byte, cmd int32) (buffer []byte, header *co
 	}
 
 	groupIdxBuf := make([]byte, GROUPIDXLEN)
-	util.EncodeInt32(groupIdxBuf, 0, int32(groupIdx))
+	util.EncodeInt32(groupIdxBuf, 0,  groupIdx)
 
 	headerLenBuf := make([] byte, HEADLEN_LEN)
 	util.EncodeUint16(headerLenBuf, 0, uint16(len(headerBuf)))

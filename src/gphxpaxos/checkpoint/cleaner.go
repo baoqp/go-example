@@ -54,7 +54,7 @@ func (cleaner *Cleaner) main() {
 	cleaner.isStart = true
 	cleaner.Continue()
 
-	deleteQps := comm.GetInsideOptions().GetCleanerDeleteQps()
+	deleteQps := config.GetCleanerDeleteQps()
 	sleepMs := 1
 	deleteInterval := 1
 	if deleteQps < 1000 {
@@ -108,10 +108,10 @@ func (cleaner *Cleaner) main() {
 }
 
 func (cleaner *Cleaner) FixMinChosenInstanceID(oldMinChosenInstanceId uint64) error {
-	cpInstanceId := cleaner.factory.GetCheckpointInstanceID(cleaner.config.GetMyGroupId()) + 1
+	cpInstanceId := cleaner.factory.GetCheckpointInstanceId(cleaner.config.GetMyGroupId()) + 1
 	fixMinChosenInstanceId := oldMinChosenInstanceId
 
-	for instanceId := oldMinChosenInstanceId; instanceId < oldMinChosenInstanceId+DELETE_SAVE_INTERVAL; instanceId++ {
+	for instanceId := oldMinChosenInstanceId; instanceId < oldMinChosenInstanceId + comm.DELETE_SAVE_INTERVAL; instanceId++ {
 		if instanceId >= cpInstanceId {
 			break
 		}
@@ -144,7 +144,7 @@ func (cleaner *Cleaner) DeleteOne(instanceId uint64) error {
 	}
 
 	cleaner.ckmnger.SetMinChosenInstanceId(instanceId)
-	if instanceId >= cleaner.lastSaveInstanceId+DELETE_SAVE_INTERVAL {
+	if instanceId >= cleaner.lastSaveInstanceId + comm.DELETE_SAVE_INTERVAL {
 		err := cleaner.ckmnger.SetMinChosenInstanceId(instanceId + 1)
 		if err != nil {
 			log.Errorf("SetMinChosenInstanceId fail, now delete instanceid %d", instanceId)
@@ -152,7 +152,7 @@ func (cleaner *Cleaner) DeleteOne(instanceId uint64) error {
 		}
 		cleaner.lastSaveInstanceId = instanceId
 
-		log.Info("delete %d instance done, now minchosen instanceid %d", DELETE_SAVE_INTERVAL, instanceId+1)
+		log.Infof("delete %d instance done, now minchosen instanceid %d", comm.DELETE_SAVE_INTERVAL, instanceId+1)
 	}
 
 	return nil

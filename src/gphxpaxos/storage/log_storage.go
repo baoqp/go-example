@@ -34,27 +34,27 @@ type WriteOptions struct {
       acceptor state data(data len - sizeof(uint64))
  */
 type LogStorage interface {
-	GetLogStorageDirPath(groupIdx int) (string, error)
+	GetLogStorageDirPath(groupIdx int32) (string, error)
 
-	Get(groupIdx int, instanceId uint64) ([]byte, error)
+	Get(groupIdx int32, instanceId uint64) ([]byte, error)
 
-	Put(writeOptions *WriteOptions, groupIdx int, instanceId uint64, value []byte) error
+	Put(writeOptions *WriteOptions, groupIdx int32, instanceId uint64, value []byte) error
 
-	Del(writeOptions *WriteOptions, groupIdx int, instanceId uint64) error
+	Del(writeOptions *WriteOptions, groupIdx int32, instanceId uint64) error
 
-	GetMaxInstanceId(groupIdx int) (uint64, error)
+	GetMaxInstanceId(groupIdx int32) (uint64, error)
 
-	SetMinChosenInstanceId(writeOptions *WriteOptions, groupIdx int, minInstanceId uint64) error
+	SetMinChosenInstanceId(writeOptions *WriteOptions, groupIdx int32, minInstanceId uint64) error
 
-	GetMinChosenInstanceId(groupIdx int) (uint64, error)
+	GetMinChosenInstanceId(groupIdx int32) (uint64, error)
 
-	ClearAllLog(groupIdx int) error
+	ClearAllLog(groupIdx int32) error
 
-	SetSystemVariables(writeOptions *WriteOptions, groupIdx int, value []byte) error
+	SetSystemVariables(writeOptions *WriteOptions, groupIdx int32, value []byte) error
 
-	GetSystemVariables(groupIdx int) ([]byte, error)
+	GetSystemVariables(groupIdx int32) ([]byte, error)
 
-	SetMasterVariables(writeOptions *WriteOptions, groupIdx int, value []byte) error
+	SetMasterVariables(writeOptions *WriteOptions, groupIdx int32, value []byte) error
 
-	GetMasterVariables(groupIdx int) ([]byte, error)
+	GetMasterVariables(groupIdx int32) ([]byte, error)
 }

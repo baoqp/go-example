@@ -71,14 +71,14 @@ func (database *Database) Init(dbPath string, myGroupIdx int) error {
 	var err error
 	database.leveldb, err = leveldb.OpenFile(dbPath, &options) // 打开LevelDB
 	if err != nil {
-		log.Error("open leveldb fail, db path:%s", dbPath)
+		log.Errorf("open leveldb fail, db path:%s", dbPath)
 		return err
 	}
 
 	database.valueStore = NewLogStore()
 	err = database.valueStore.Init(dbPath, database)
 	if err != nil {
-		log.Error("value store init fail:%v", err)
+		log.Errorf("value store init fail:%v", err)
 		return err
 	}
 	database.hasInit = true
@@ -96,14 +96,14 @@ func (database *Database) ClearAllLog() error {
 
 	systemVariablesBuffer, err := database.GetSystemVariables()
 	if err != nil && err != comm.ErrKeyNotFound {
-		log.Error("GetSystemVariables fail, ret %v", err)
+		log.Errorf("GetSystemVariables fail, ret %v", err)
 		return err
 	}
 
 
 	masterVariablesBuffer, err := database.GetMasterVariables()
 	if err != nil && err != comm.ErrKeyNotFound {
-		log.Error("GetMasterVariables fail, ret %v", err)
+		log.Errorf("GetMasterVariables fail, ret %v", err)
 		return err
 	}
 
@@ -114,7 +114,7 @@ func (database *Database) ClearAllLog() error {
 	bakPath := database.dbPath + ".bak"
 	err = util.DeleteDir(bakPath)
 	if err != nil {
-		log.Error("delete bak dir %s fail:%v", bakPath, err)
+		log.Errorf("delete bak dir %s fail:%v", bakPath, err)
 		return err
 	}
 
@@ -122,7 +122,7 @@ func (database *Database) ClearAllLog() error {
 
 	err = database.Init(database.dbPath, database.myGroupIdx)
 	if err != nil {
-		log.Error("init again fail:%v", err)
+		log.Errorf("init again fail:%v", err)
 		return err
 	}
 
@@ -132,14 +132,14 @@ func (database *Database) ClearAllLog() error {
 	if len(systemVariablesBuffer) > 0 {
 		err = database.SetSystemVariables(&options, systemVariablesBuffer)
 		if err != nil {
-			log.Error("SetSystemVariables fail:%v", err)
+			log.Errorf("SetSystemVariables fail:%v", err)
 			return err
 		}
 	}
 	if len(masterVariablesBuffer) > 0 {
 		err = database.SetMasterVariables(&options, masterVariablesBuffer)
 		if err != nil {
-			log.Error("SetMasterVariables fail:%v", err)
+			log.Errorf("SetMasterVariables fail:%v", err)
 			return err
 		}
 	}
@@ -168,7 +168,7 @@ func (database *Database) Get(instanceId uint64) ([]byte, error) {
 	}
 
 	if fileinstanceId != instanceId {
-		log.Error("file instance id %d not equal to instance id %d", fileinstanceId, instanceId)
+		log.Errorf("file instance id %d not equal to instance id %d", fileinstanceId, instanceId)
 		return nil, comm.ErrInvalidInstanceId
 	}
 
@@ -194,7 +194,7 @@ func (database *Database) Put(options *WriteOptions, instanceId uint64, value []
 
 func (database *Database) Del(options *WriteOptions, instanceId uint64) error {
 	if !database.hasInit {
-		log.Error("no init yet")
+		log.Errorf("no init yet")
 		return comm.ErrDbNotInit
 	}
 
@@ -205,10 +205,10 @@ func (database *Database) Del(options *WriteOptions, instanceId uint64) error {
 		fileId, err := database.leveldb.Get([]byte(key), &opt.ReadOptions{})
 		if err != nil {
 			if err == leveldb.ErrNotFound {
-				log.Error("leveldb.get not found, instance:%d", instanceId)
+				log.Errorf("leveldb.get not found, instance:%d", instanceId)
 				return nil
 			}
-			log.Error("leveldb.get fail:%v", err)
+			log.Errorf("leveldb.get fail:%v", err)
 			return comm.ErrGetFail
 		}
 
@@ -223,7 +223,7 @@ func (database *Database) Del(options *WriteOptions, instanceId uint64) error {
 	}
 	err := database.leveldb.Delete([]byte(key), &writeOptions)
 	if err != nil {
-		log.Error("leveldb.delete fail, instanceId %d, err:%v", instanceId, err)
+		log.Errorf("leveldb.delete fail, instanceId %d, err:%v", instanceId, err)
 		return err
 	}
 	return nil
@@ -232,7 +232,7 @@ func (database *Database) Del(options *WriteOptions, instanceId uint64) error {
 func (database *Database) ForceDel(options WriteOptions, instanceId uint64) error {
 
 	if !database.hasInit {
-		log.Error("no init yet")
+		log.Errorf("no init yet")
 		return comm.ErrDbNotInit
 	}
 
@@ -240,10 +240,10 @@ func (database *Database) ForceDel(options WriteOptions, instanceId uint64) erro
 	fileId, err := database.leveldb.Get([]byte(key), &opt.ReadOptions{})
 	if err != nil {
 		if err == leveldb.ErrNotFound {
-			log.Error("leveldb.get not found, instance:%d", instanceId)
+			log.Errorf("leveldb.get not found, instance:%d", instanceId)
 			return nil
 		}
-		log.Error("leveldb.get fail:%v", err)
+		log.Errorf("leveldb.get fail:%v", err)
 		return comm.ErrGetFail
 	}
 
@@ -257,7 +257,7 @@ func (database *Database) ForceDel(options WriteOptions, instanceId uint64) erro
 	}
 	err = database.leveldb.Delete([]byte(key), &writeOptions)
 	if err != nil {
-		log.Error("leveldb.delete fail, instanceId %d, err:%v", instanceId, err)
+		log.Errorf("leveldb.delete fail, instanceId %d, err:%v", instanceId, err)
 		return err
 	}
 	return nil
@@ -327,7 +327,7 @@ func (database *Database) rebuildOneIndex(instanceId uint64, fileIdstr string) e
 // TODO for what ????
 func (database *Database) SetMinChosenInstanceId(writeOptions *WriteOptions, mininstanceId uint64) error {
 	if !database.hasInit {
-		log.Error("no init yet")
+		log.Errorf("no init yet")
 		return comm.ErrDbNotInit
 	}
 
@@ -345,7 +345,7 @@ func (database *Database) SetMinChosenInstanceId(writeOptions *WriteOptions, min
 
 func (database *Database) GetMinChoseninstanceId() (uint64, error) {
 	if !database.hasInit {
-		log.Error("db not init yet")
+		log.Errorf("db not init yet")
 		return comm.INVALID_INSTANCEID, comm.ErrDbNotInit
 	}
 
@@ -356,12 +356,12 @@ func (database *Database) GetMinChoseninstanceId() (uint64, error) {
 	}
 
 	if err == comm.ErrKeyNotFound {
-		log.Error("no min chosen instanceId")
+		log.Errorf("no min chosen instanceId")
 		return 0, nil
 	}
 
 	if len(value) != comm.UINT64SIZE {
-		log.Error("fail, mininstanceId size wrong")
+		log.Errorf("fail, mininstanceId size wrong")
 		return comm.INVALID_INSTANCEID, comm.ErrInvalidInstanceId
 	}
 
@@ -416,7 +416,7 @@ func (database *Database) putToLevelDB(sync bool, instanceId uint64, value []byt
 
 	err := database.leveldb.Put([]byte(key), value, &options)
 	if err != nil {
-		log.Error("leveldb put fail, instanceId %d value len %d", instanceId, len(value))
+		log.Errorf("leveldb put fail, instanceId %d value len %d", instanceId, len(value))
 		return err
 	}
 
@@ -427,7 +427,7 @@ func (database *Database) putToLevelDB(sync bool, instanceId uint64, value []byt
 func (database *Database) fileIdToValue(fileId string, instanceId *uint64) ([]byte, error) {
 	value, err := database.valueStore.Read(fileId, instanceId)
 	if err != nil {
-		log.Error("fieldIdToValue fail, ret %v", err)
+		log.Errorf("fieldIdToValue fail, ret %v", err)
 		return nil, err
 	}
 
@@ -438,7 +438,7 @@ func (database *Database) fileIdToValue(fileId string, instanceId *uint64) ([]by
 func (database *Database) valueToFileId(options *WriteOptions, instanceId uint64, value []byte, fileId *string) error {
 	err := database.valueStore.Append(options, instanceId, value, fileId)
 	if err != nil {
-		log.Error("valueStore append fail:%v", err)
+		log.Errorf("valueStore append fail:%v", err)
 	}
 	return err
 }
@@ -506,70 +506,70 @@ func (multiDatabase *MultiDatabase) Init(dbPath string, groupCount int) error {
 	return nil
 }
 
-func (multiDatabase *MultiDatabase) GetLogStorageDirPath(groupIdx int) (string, error) {
-	if groupIdx > len(multiDatabase.dbList) {
+func (multiDatabase *MultiDatabase) GetLogStorageDirPath(groupIdx int32) (string, error) {
+	if int(groupIdx) > len(multiDatabase.dbList) {
 		return "", fmt.Errorf("groupIdx out of bround")
 	}
-	return multiDatabase.dbList[groupIdx].GetDBPath(), nil
+	return multiDatabase.dbList[int(groupIdx)].GetDBPath(), nil
 }
 
-func (multiDatabase *MultiDatabase) Get(groupIdx int, instanceId uint64) ([]byte, error) {
-	if groupIdx > len(multiDatabase.dbList) {
+func (multiDatabase *MultiDatabase) Get(groupIdx int32, instanceId uint64) ([]byte, error) {
+	if int(groupIdx) > len(multiDatabase.dbList) {
 		return nil, fmt.Errorf("groupIdx out of bround")
 	}
 
-	return multiDatabase.dbList[groupIdx].Get(instanceId)
+	return multiDatabase.dbList[int(groupIdx)].Get(instanceId)
 }
 
-func (multiDatabase *MultiDatabase) Put(writeOptions *WriteOptions, groupIdx int, instanceId uint64, value []byte) error {
-	if groupIdx > len(multiDatabase.dbList) {
+func (multiDatabase *MultiDatabase) Put(writeOptions *WriteOptions, groupIdx int32, instanceId uint64, value []byte) error {
+	if int(groupIdx) > len(multiDatabase.dbList) {
 		return fmt.Errorf("groupIdx out of bround")
 	}
 
-	return multiDatabase.dbList[groupIdx].Put(writeOptions, instanceId, value)
+	return multiDatabase.dbList[int(groupIdx)].Put(writeOptions, instanceId, value)
 }
 
-func (multiDatabase *MultiDatabase) Del(writeOptions *WriteOptions, groupIdx int, instanceId uint64) error {
-	if groupIdx > len(multiDatabase.dbList) {
+func (multiDatabase *MultiDatabase) Del(writeOptions *WriteOptions, groupIdx int32, instanceId uint64) error {
+	if int(groupIdx) > len(multiDatabase.dbList) {
 		return fmt.Errorf("groupIdx out of bround")
 	}
 
-	return multiDatabase.dbList[groupIdx].Del(writeOptions, instanceId)
+	return multiDatabase.dbList[int(groupIdx)].Del(writeOptions, instanceId)
 }
 
-func (multiDatabase *MultiDatabase) GetMaxInstanceId(groupIdx int) (uint64, error) {
-	if groupIdx > len(multiDatabase.dbList) {
+func (multiDatabase *MultiDatabase) GetMaxInstanceId(groupIdx int32) (uint64, error) {
+	if int(groupIdx) > len(multiDatabase.dbList) {
 		return -1, fmt.Errorf("groupIdx out of bround")
 	}
 
-	return multiDatabase.dbList[groupIdx].GetMaxInstanceId()
+	return multiDatabase.dbList[int(groupIdx)].GetMaxInstanceId()
 }
 
-func (multiDatabase *MultiDatabase) SetMinChosenInstanceId(writeOptions *WriteOptions, groupIdx int, minInstanceId uint64) error {
-	if groupIdx > len(multiDatabase.dbList) {
+func (multiDatabase *MultiDatabase) SetMinChosenInstanceId(writeOptions *WriteOptions, groupIdx int32, minInstanceId uint64) error {
+	if int(groupIdx) > len(multiDatabase.dbList) {
 		return fmt.Errorf("groupIdx out of bround")
 	}
 	return multiDatabase.dbList[groupIdx].SetMinChosenInstanceId(writeOptions, minInstanceId)
 }
 
-func (multiDatabase *MultiDatabase) GetMinChosenInstanceId(groupIdx int) (uint64, error) {
-	if groupIdx > len(multiDatabase.dbList) {
+func (multiDatabase *MultiDatabase) GetMinChosenInstanceId(groupIdx int32) (uint64, error) {
+	if int(groupIdx) > len(multiDatabase.dbList) {
 		return -1, fmt.Errorf("groupIdx out of bround")
 	}
 
 	return multiDatabase.dbList[groupIdx].GetMinChoseninstanceId()
 }
 
-func (multiDatabase *MultiDatabase) ClearAllLog(groupIdx int) error {
-	if groupIdx > len(multiDatabase.dbList) {
+func (multiDatabase *MultiDatabase) ClearAllLog(groupIdx int32) error {
+	if int(groupIdx) > len(multiDatabase.dbList) {
 		return fmt.Errorf("groupIdx out of bround")
 	}
 
 	return multiDatabase.dbList[groupIdx].ClearAllLog()
 }
 
-func (multiDatabase *MultiDatabase) SetSystemVariables(writeOptions *WriteOptions, groupIdx int, value []byte) error {
-	if groupIdx > len(multiDatabase.dbList) {
+func (multiDatabase *MultiDatabase) SetSystemVariables(writeOptions *WriteOptions, groupIdx int32, value []byte) error {
+	if int(groupIdx) > len(multiDatabase.dbList) {
 		return fmt.Errorf("groupIdx out of bround")
 	}
 
@@ -577,9 +577,8 @@ func (multiDatabase *MultiDatabase) SetSystemVariables(writeOptions *WriteOption
 
 }
 
-func (multiDatabase *MultiDatabase) GetSystemVariables(groupIdx int) ([]byte, error) {
-
-	if groupIdx > len(multiDatabase.dbList) {
+func (multiDatabase *MultiDatabase) GetSystemVariables(groupIdx int32) ([]byte, error) {
+	if int(groupIdx) > len(multiDatabase.dbList) {
 		return nil, fmt.Errorf("groupIdx out of bround")
 	}
 
@@ -587,16 +586,16 @@ func (multiDatabase *MultiDatabase) GetSystemVariables(groupIdx int) ([]byte, er
 
 }
 
-func (multiDatabase *MultiDatabase) SetMasterVariables(writeOptions *WriteOptions, groupIdx int, value []byte) error{
-	if groupIdx > len(multiDatabase.dbList) {
+func (multiDatabase *MultiDatabase) SetMasterVariables(writeOptions *WriteOptions, groupIdx int32, value []byte) error{
+	if int(groupIdx) > len(multiDatabase.dbList) {
 		return   fmt.Errorf("groupIdx out of bround")
 	}
 
 	return multiDatabase.dbList[groupIdx].SetMasterVariables(writeOptions, value)
 }
 
-func (multiDatabase *MultiDatabase) GetMasterVariables(groupIdx int) ([]byte, error) {
-	if groupIdx > len(multiDatabase.dbList) {
+func (multiDatabase *MultiDatabase) GetMasterVariables(groupIdx int32) ([]byte, error) {
+	if int(groupIdx) > len(multiDatabase.dbList) {
 		return   nil, fmt.Errorf("groupIdx out of bround")
 	}
 

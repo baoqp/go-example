@@ -8,13 +8,14 @@ import (
 	log "github.com/sirupsen/logrus"
 	"time"
 	"gphxpaxos/smbase"
+	"gphxpaxos/config"
 )
 
 type MasterMgr struct {
 	leaseTime      int
 	isEnd          bool
 	isStarted      bool
-	myGroupId      int
+	myGroupId      int32
 	needDropMaster bool
 
 	paxosNode       *node.Node
@@ -22,11 +23,11 @@ type MasterMgr struct {
 }
 
 func NewMasterMgr(paxosNode *node.Node, groupId int, logStorage storage.LogStorage,
-	callback comm.MasterChangeCallback) *MasterMgr {
+	callback config.MasterChangeCallback) *MasterMgr {
 
 	masterMgr := &MasterMgr{isEnd: false, isStarted: false, needDropMaster: false,
 		leaseTime: 10000, paxosNode: paxosNode}
-	masterMgr.defaultMasterSM = NewMasterStateMachine(groupId, paxosNode.GetMyNodeID(), logStorage, callback)
+	masterMgr.defaultMasterSM = NewMasterStateMachine(groupId, paxosNode.GetMyNodeId(), logStorage, callback)
 	return masterMgr
 }
 
@@ -103,14 +104,14 @@ func (mgr *MasterMgr) TryBeMaster(leaseTime int) {
 
 	//step 1 check exist master and get version
 	mgr.defaultMasterSM.SafeGetMaster(&masterNodeId, &masterVersion)
-	if masterNodeId != comm.NULL_NODEID && masterNodeId != mgr.paxosNode.GetMyNodeID() {
+	if masterNodeId != comm.NULL_NODEID && masterNodeId != mgr.paxosNode.GetMyNodeId() {
 		log.Infof("Ohter as master, can't try be master, masterid %d myid %d",
-			masterNodeId, mgr.paxosNode.GetMyNodeID())
+			masterNodeId, mgr.paxosNode.GetMyNodeId())
 		return
 	}
 
 	//step 2 try be master
-	value, err := MakeOpValue(mgr.paxosNode.GetMyNodeID(), masterVersion,
+	value, err := MakeOpValue(mgr.paxosNode.GetMyNodeId(), masterVersion,
 		int32(leaseTime), MasterOperatorType_Complete)
 
 	if err != nil {
@@ -120,11 +121,11 @@ func (mgr *MasterMgr) TryBeMaster(leaseTime int) {
 
 	masterLeaseTimeout := uint64(leaseTime - 100)
 	absMasterTimeout := util.NowTimeMs() + masterLeaseTimeout
-	commitInstanceId := uint64(0) // TODO
+	commitInstanceId := uint64(0)
 
 	ctx := &smbase.SMCtx{SMID:comm.MASTER_V_SMID, PCtx:absMasterTimeout}
 
-	mgr.paxosNode.ProposeWithCtx(mgr.myGroupId, value, commitInstanceId, ctx)
+	mgr.paxosNode.ProposeWithCtx(mgr.myGroupId, value, &commitInstanceId, ctx)
 }
 
 func (mgr *MasterMgr)  GetMasterSM() *MasterStateMachine {

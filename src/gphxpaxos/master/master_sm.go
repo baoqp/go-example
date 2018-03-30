@@ -9,11 +9,12 @@ import (
 	"gphxpaxos/util"
 	"gphxpaxos/smbase"
 	"math"
+	"gphxpaxos/config"
 )
 
 // 实现InsideSM接口
 type MasterStateMachine struct {
-	myGroupId            int
+	myGroupId            int32
 	myNodeId             uint64
 	mvStore              *MasterVariablesStore
 	masterNodeId         uint64
@@ -21,11 +22,11 @@ type MasterStateMachine struct {
 	leaseTime            int
 	absExpireTime        uint64
 	mutex                sync.Mutex
-	masterChangeCallback comm.MasterChangeCallback
+	masterChangeCallback config.MasterChangeCallback
 }
 
-func NewMasterStateMachine(groupId int, myNodeId uint64, logstorage storage.LogStorage,
-	masterChangeCallback comm.MasterChangeCallback) *MasterStateMachine {
+func NewMasterStateMachine(groupId int32, myNodeId uint64, logstorage storage.LogStorage,
+	masterChangeCallback config.MasterChangeCallback) *MasterStateMachine {
 
 	return &MasterStateMachine{
 		myGroupId:            groupId,
@@ -48,7 +49,7 @@ func (masterSM *MasterStateMachine) Init() error {
 	}
 
 	if err == comm.ErrKeyNotFound {
-		log.Info("no master variables exist")
+		log.Infof("no master variables exist")
 	} else {
 		masterSM.masterVersion = variables.GetVersion()
 		if variables.GetVersion() == masterSM.myNodeId {
@@ -60,7 +61,7 @@ func (masterSM *MasterStateMachine) Init() error {
 		}
 	}
 
-	log.Info("OK, master nodeid %d version %d expiretime %d",
+	log.Infof("OK, master nodeid %d version %d expiretime %d",
 		masterSM.masterNodeId, masterSM.masterVersion, masterSM.absExpireTime)
 	return nil
 }
@@ -121,10 +122,10 @@ func (masterSM *MasterStateMachine) LearnMaster(instanceId uint64, operator *Mas
 	masterSM.masterNodeId = operator.GetNodeid()
 	if masterSM.masterNodeId == masterSM.myNodeId {
 		masterSM.absExpireTime = absMasterTimeout
-		log.Info("Be master success, absexpiretime %d", masterSM.absExpireTime)
+		log.Infof("Be master success, absexpiretime %d", masterSM.absExpireTime)
 	} else {
 		masterSM.absExpireTime = util.NowTimeMs() + uint64(operator.GetTimeout())
-		log.Info("Other be master, absexpiretime %d", masterSM.absExpireTime)
+		log.Infof("Other be master, absexpiretime %d", masterSM.absExpireTime)
 	}
 
 	masterSM.leaseTime = int(operator.GetTimeout())
@@ -133,11 +134,11 @@ func (masterSM *MasterStateMachine) LearnMaster(instanceId uint64, operator *Mas
 	if masterChange {
 		if masterSM.masterChangeCallback != nil {
 			masterSM.masterChangeCallback(masterSM.myGroupId,
-				&comm.NodeInfo{NodeId: masterSM.masterNodeId}, masterSM.masterVersion) // TODO &NodeInfo{NodeId}
+				&config.NodeInfo{NodeId: masterSM.masterNodeId}, masterSM.masterVersion) // TODO &NodeInfo{NodeId}
 		}
 	}
 
-	log.Info("OK, masternodeid %d version %d abstimeout %d",
+	log.Infof("OK, masternodeid %d version %d abstimeout %d",
 		masterSM.masterNodeId, masterSM.masterVersion, masterSM.absExpireTime)
 
 	return nil
@@ -192,7 +193,7 @@ func (masterSM *MasterStateMachine) Execute(groupIdx int32, instanceId uint64, v
 			absMasterTimeout = *(ctx.PCtx.(*uint64))
 		}
 
-		log.Info("absmaster timeout %v", absMasterTimeout)
+		log.Infof("absmaster timeout %v", absMasterTimeout)
 
 		err = masterSM.LearnMaster(instanceId, operator, absMasterTimeout)
 		if err != nil {
@@ -249,7 +250,7 @@ func (masterSM *MasterStateMachine) UpdateByCheckpoint(buffer []byte, change *bo
 	}
 
 	if variables.GetVersion() <= masterSM.masterVersion && masterSM.masterVersion != -1 {
-		log.Info("lag checkpoint, no need update, cp.version %d now.version %d",
+		log.Infof("lag checkpoint, no need update, cp.version %d now.version %d",
 			variables.GetVersion(), masterSM.masterVersion)
 		return nil
 	}
@@ -259,7 +260,7 @@ func (masterSM *MasterStateMachine) UpdateByCheckpoint(buffer []byte, change *bo
 		return err
 	}
 
-	log.Info("ok, cp.version %d cp.masternodeid %d old.version %d old.masternodeid %d",
+	log.Infof("ok, cp.version %d cp.masternodeid %d old.version %d old.masternodeid %d",
 		variables.GetVersion(), variables.GetMasterNodeid(), masterSM.masterVersion, masterSM.masterNodeId)
 
 	masterChange := false
@@ -280,7 +281,7 @@ func (masterSM *MasterStateMachine) UpdateByCheckpoint(buffer []byte, change *bo
 	if masterChange {
 		if masterSM.masterChangeCallback != nil {
 			masterSM.masterChangeCallback(masterSM.myGroupId,
-				&comm.NodeInfo{NodeId: masterSM.masterNodeId}, masterSM.masterVersion) // TODO &NodeInfo{NodeId}
+				&config.NodeInfo{NodeId: masterSM.masterNodeId}, masterSM.masterVersion) // TODO &NodeInfo{NodeId}
 		}
 	}
 

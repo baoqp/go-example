@@ -6,11 +6,9 @@ import (
 	"math"
 )
 
-const(
+const (
 	Version = 1
-
 )
-
 
 const (
 	CRC32_SKIP    = 0
@@ -88,9 +86,9 @@ var (
 
 var INVALID_INSTANCEID uint64 = math.MaxUint64
 var NULL_NODEID uint64 = math.MaxUint64 - 1
+var INVALID_VERSION uint64 = math.MaxUint64
 
 var UINT64_0 = uint64(0)
-
 
 var (
 	// 用error表示commit结果
@@ -123,4 +121,9 @@ const (
 	SYSTEM_V_SMID      = 100000000
 	MASTER_V_SMID      = 100000001
 	BATCH_PROPOSE_SMID = 100000002
+)
+
+
+const (
+	DELETE_SAVE_INTERVAL = 10
 )

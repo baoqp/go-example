@@ -17,7 +17,7 @@ func NewMasterVariablesStore(logstorage storage.LogStorage) *MasterVariablesStor
 	}
 }
 
-func (s *MasterVariablesStore) Write(writeOptions *storage.WriteOptions, groupId int,
+func (s *MasterVariablesStore) Write(writeOptions *storage.WriteOptions, groupId int32,
 	variables *comm.MasterVariables) error {
 
 	buffer, err := proto.Marshal(variables)
@@ -38,7 +38,7 @@ func (s *MasterVariablesStore) Write(writeOptions *storage.WriteOptions, groupId
 	return nil
 }
 
-func (s *MasterVariablesStore) Read(groupId int, variables *comm.MasterVariables) error {
+func (s *MasterVariablesStore) Read(groupId int32, variables *comm.MasterVariables) error {
 	buffer, err := s.logstorage.GetMasterVariables(groupId)
 	if err != nil {
 		return err

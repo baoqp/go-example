@@ -8,24 +8,24 @@ type SMCtx struct {
 
 // 状态机接口
 type StateMachine interface {
-	Execute(groupIdx int, instanceId uint64, paxosValue []byte, context *SMCtx) error
+	Execute(groupIdx int32, instanceId uint64, paxosValue []byte, context *SMCtx) error
 
 	SMID() int32
 
-	ExecuteForCheckpoint(groupIdx int, instanceId uint64, paxosValue []byte) error
+	ExecuteForCheckpoint(groupIdx int32, instanceId uint64, paxosValue []byte) error
 
-	GetCheckpointInstanceID(groupIdx int) uint64
+	GetCheckpointInstanceId(groupIdx int32) uint64
 
 	LockCheckpointState() error
 
-	GetCheckpointState(groupIdx int, dirPath *string, fileList []string) error
+	GetCheckpointState(groupIdx int32, dirPath *string, fileList []string) error
 
 	UnLockCheckpointState()
 
-	LoadCheckpointState(groupIdx int, checkpointTmpFileDirPath string,
+	LoadCheckpointState(groupIdx int32, checkpointTmpFileDirPath string,
 		fileList []string, checkpointInstanceID uint64) error
 
-	BeforePropose(groupIdx int, value []byte)
+	BeforePropose(groupIdx int32, value []byte)
 
 	NeedCallBeforePropose() bool
 }

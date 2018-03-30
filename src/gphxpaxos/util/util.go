@@ -15,7 +15,6 @@ import (
 
 
 	"io/ioutil"
-	"golang.org/x/text/language"
 )
 
 func Rand(up int) int {

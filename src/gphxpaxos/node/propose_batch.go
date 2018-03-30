@@ -19,7 +19,7 @@ type PendingProposal struct {
 }
 
 type ProposeBatch struct {
-	myGroupId    int
+	myGroupId    int32
 	paxosNode    *Node
 	mutex        sync.Mutex
 	isEnd        bool
@@ -32,7 +32,7 @@ type ProposeBatch struct {
 	batchMaxSize     int
 }
 
-func NewProposeBatch(groupId int, node *Node) *ProposeBatch {
+func NewProposeBatch(groupId int32, node *Node) *ProposeBatch {
 
 	proposeBatch := &ProposeBatch{myGroupId: groupId, paxosNode: node,
 		isEnd: false, isStarted: false, nowQueueSize: 0, batchCount: 5,
@@ -217,7 +217,7 @@ func (pb *ProposeBatch) DoProposal(requests []*PendingProposal) {
 
 	var ret error
 	if err == nil {
-		ret = pb.paxosNode.ProposeWithCtx(pb.myGroupId, buffer, instanceId, ctx)
+		ret = pb.paxosNode.ProposeWithCtx(pb.myGroupId, buffer, &instanceId, ctx)
 		if ret != nil {
 			log.Errorf("real propose fail, ret %v", ret)
 		}
@@ -235,6 +235,6 @@ func (pb *ProposeBatch) DoProposal(requests []*PendingProposal) {
 }
 
 func (pb *ProposeBatch) OnlyOnePropose(proposal *PendingProposal) {
-	err := pb.paxosNode.ProposeWithCtx(pb.myGroupId, proposal.value, proposal.instanceId, proposal.ctx)
+	err := pb.paxosNode.ProposeWithCtx(pb.myGroupId, proposal.value, &proposal.instanceId, proposal.ctx)
 	proposal.notifier <- err
 }

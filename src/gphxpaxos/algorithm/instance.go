@@ -52,15 +52,15 @@ type Instance struct {
 	mutex        sync.Mutex
 }
 
-func NewInstance(config *config.Config, logstorage storage.LogStorage, transport network.MsgTransport,
+func NewInstance(cfg *config.Config, logstorage storage.LogStorage, transport network.MsgTransport,
 	useCkReplayer bool) (*Instance, error) {
 
 	instance := &Instance{
-		config:       config,
+		config:       cfg,
 		logStorage:   logstorage,
 		transport:    transport,
 		paxosLog:     storage.NewPaxosLog(logstorage),
-		factory:      smbase.NewSMFac(config.GetMyGroupId()),
+		factory:      smbase.NewSMFac(cfg.GetMyGroupId()),
 		timerThread:  util.NewTimerThread(),
 		endChan:      make(chan bool),
 		commitChan:   make(chan CommitMsg),
@@ -75,7 +75,7 @@ func NewInstance(config *config.Config, logstorage storage.LogStorage, transport
 		return nil, err
 	}
 
-	instance.ckMnger = checkpoint.NewCheckpointManager(config, instance.factory, logstorage, useCkReplayer)
+	instance.ckMnger = checkpoint.NewCheckpointManager(cfg, instance.factory, logstorage, useCkReplayer)
 	instance.ckMnger.Init()
 	cpInstanceId := instance.ckMnger.GetCheckpointInstanceID() + 1
 
@@ -109,9 +109,9 @@ func NewInstance(config *config.Config, logstorage storage.LogStorage, transport
 	instance.proposer = NewProposer(instance)
 	instance.proposer.setStartProposalID(instance.acceptor.GetAcceptorState().GetPromiseNum().proposalId + 1)
 
-	instance.name = fmt.Sprintf("%s-%d", config.GetOptions().MyNodeInfo.String(), config.GetMyNodeId())
+	instance.name = fmt.Sprintf("%s-%d", cfg.GetOptions().MyNodeInfo.String(), cfg.GetMyNodeId())
 
-	maxInstanceId, err := logstorage.GetMaxInstanceId(config.GetMyGroupId())
+	maxInstanceId, err := logstorage.GetMaxInstanceId(cfg.GetMyGroupId())
 	log.Debug("max instance id:%d:%v， propose id:%d", maxInstanceId, err, instance.proposer.GetInstanceId())
 
 	instance.ckMnger.SetMinChosenInstanceId(nowInstanceId)
@@ -119,7 +119,7 @@ func NewInstance(config *config.Config, logstorage storage.LogStorage, transport
 	if err != nil {
 		return nil, err
 	}
-	instance.learner.Reset_AskforLearn_Noop(comm.GetInsideOptions().GetAskforLearnInterval())
+	instance.learner.Reset_AskforLearn_Noop(config.GetAskforLearnInterval()) //GetAskforLearnInterval
 
 	instance.learner.Init()
 	instance.ckMnger.Start()
@@ -315,7 +315,7 @@ func (instance *Instance) onCommit() {
 	}
 
 	commitValue := instance.commitctx.getCommitValue()
-	if len(commitValue) > comm.GetInsideOptions().GetMaxValueSize() {
+	if len(commitValue) > config.GetMaxValueSize() {
 		log.Errorf("[%s]value size %d to large, skip commit new value", instance.name, len(commitValue))
 		instance.commitctx.setResultOnlyRet(comm.PaxosTryCommitRet_Value_Size_TooLarge)
 	}
@@ -595,7 +595,7 @@ func (instance *Instance) SMExecute(instanceId uint64, value []byte,
 	return instance.factory.Execute(instance.groupId(), instanceId, value, smCtx)
 }
 
-func (instance *Instance) groupId() int {
+func (instance *Instance) groupId() int32 {
 	return instance.config.GetMyGroupId()
 }
 

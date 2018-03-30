@@ -79,7 +79,7 @@ func (learnerSender *LearnerSender) IsImSending() bool {
 		passTime = nowTime - learnerSender.absLastSendTime
 	}
 
-	if passTime >= uint64(comm.GetInsideOptions().GetLearnerSenderPrepareTimeoutMs()) {
+	if passTime >= uint64(config.GetLearnerSenderPrepareTimeoutMs()) {
 		return false
 	}
 
@@ -93,15 +93,15 @@ func (learnerSender *LearnerSender) CheckAck(sendInstanceId uint64) bool {
 		return false
 	}
 
-	for sendInstanceId > learnerSender.ackInstanceID+uint64(comm.GetInsideOptions().GetLearnerSenderAckLead()) {
+	for sendInstanceId > learnerSender.ackInstanceID+uint64(config.GetLearnerSender_Ack_Lead()) {
 		nowTime := util.NowTimeMs()
 		var passTime uint64 = 0
 		if nowTime > learnerSender.absLastAckTime {
 			passTime = nowTime - learnerSender.absLastAckTime
 		}
 
-		if passTime >= uint64(comm.GetInsideOptions().GetLearnerSenderAckLead()) {
-			log.Error("Ack timeout, last acktime %d now send instanceid %d",
+		if passTime >= uint64(config.GetLearnerSender_Ack_Lead()) {
+			log.Errorf("Ack timeout, last acktime %d now send instanceid %d",
 				learnerSender.absLastAckTime, sendInstanceId)
 			return false
 		}
@@ -177,7 +177,7 @@ func (learnerSender *LearnerSender) SendLearnedValue(beginInstanceId uint64, sen
 
 	sendInstanceId := beginInstanceId
 
-	sendQps := uint64(comm.GetInsideOptions().GetLearnerSenderSendQps())
+	sendQps := uint64(config.GetLearnerSenderSendQps())
 	var sleepMs uint64 = 1
 	if sendQps > 1000 {
 		sleepMs = sendQps/1000 + 1
@@ -189,7 +189,7 @@ func (learnerSender *LearnerSender) SendLearnedValue(beginInstanceId uint64, sen
 	for sendInstanceId < learnerSender.learner.GetInstanceId() {
 		err := learnerSender.SendOne(sendInstanceId, sendToNodeId, &lastCksum)
 		if err != nil {
-			log.Error("SendOne fail, SendInstanceID %d SendToNodeID %d error %v",
+			log.Errorf("SendOne fail, SendInstanceID %d SendToNodeID %d error %v",
 				sendInstanceId, sendToNodeId, err)
 			return
 		}
@@ -218,7 +218,7 @@ func (learnerSender *LearnerSender) SendOne(sendInstanceId uint64, sendToNodeId 
 
 	ballot := NewBallotNumber(state.GetAcceptedID(), state.GetAcceptedNodeID())
 
-	err = learnerSender.learner.SendLearnValue(sendToNodeId, sendInstanceId, *ballot,
+	err = learnerSender.learner.SendLearnValue(sendToNodeId, sendInstanceId, ballot,
 		state.GetAcceptedValue(), *lastCksum, true)
 
 	*lastCksum = state.GetChecksum()

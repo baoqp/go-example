@@ -19,20 +19,20 @@ var EmptyStateMachine = errors.New("empty statemachines")
 var UnknownSMID = errors.New("unknown smid")
 
 type SMFac struct {
-	myGroupIdx    int
+	myGroupIdx    int32
 	stateMachines map[int32]StateMachine
 }
 
-func NewSMFac(groupIdx int) *SMFac {
+func NewSMFac(groupIdx int32) *SMFac {
 	return &SMFac{
 		myGroupIdx:    groupIdx,
 		stateMachines: make(map[int32]StateMachine, 0),
 	}
 }
 
-func (smFac *SMFac) Execute(groupIdx int, instanceId uint64, paxosValue []byte, ctx *SMCtx) error {
+func (smFac *SMFac) Execute(groupIdx int32, instanceId uint64, paxosValue []byte, ctx *SMCtx) error {
 	if !isValidPaxosValue(paxosValue) {
-		log.Error("value wrong, instanceid %d size %d", instanceId, len(paxosValue))
+		log.Errorf("value wrong, instanceid %d size %d", instanceId, len(paxosValue))
 		return InvalidPaxosValue
 	}
 
@@ -55,18 +55,18 @@ func (smFac *SMFac) Execute(groupIdx int, instanceId uint64, paxosValue []byte, 
 	return nil
 }
 
-func (smFac *SMFac) BatchExecute(groupIdx int, instanceId uint64, paxosValue []byte, ctx *BatchSMCtx) error {
+func (smFac *SMFac) BatchExecute(groupIdx int32, instanceId uint64, paxosValue []byte, ctx *BatchSMCtx) error {
 	var batchValue comm.BatchPaxosValues
 	err := proto.Unmarshal(paxosValue, &batchValue)
 
 	if err != nil {
-		log.Error("BatchPaxosValue wrong, instanceid %d", instanceId)
+		log.Errorf("BatchPaxosValue wrong, instanceid %d", instanceId)
 		return InvalidPaxosValue
 	}
 
 	if ctx != nil {
-		if len(ctx.smCtxList) != len(batchValue.Values) {
-			log.Error("BatchPaxosValue size and BatchSMCtx SM size not equal")
+		if len(ctx.SMCtxList) != len(batchValue.Values) {
+			log.Errorf("BatchPaxosValue size and BatchSMCtx SM size not equal")
 			return ValuesSMSizeNotMatch
 		}
 	}
@@ -75,7 +75,7 @@ func (smFac *SMFac) BatchExecute(groupIdx int, instanceId uint64, paxosValue []b
 
 		var smCtx *SMCtx = nil
 		if ctx != nil {
-			smCtx = ctx.smCtxList[idx]
+			smCtx = ctx.SMCtxList[idx]
 		}
 
 		err = smFac.DoExecute(groupIdx, instanceId, value.Value, *value.SMID, smCtx)
@@ -89,24 +89,24 @@ func (smFac *SMFac) BatchExecute(groupIdx int, instanceId uint64, paxosValue []b
 
 }
 
-func (smFac *SMFac) DoExecute(groupIdx int, instanceId uint64, body []byte, smid int32, ctx *SMCtx) error {
+func (smFac *SMFac) DoExecute(groupIdx int32, instanceId uint64, body []byte, smid int32, ctx *SMCtx) error {
 	if len(smFac.stateMachines) == 0 {
-		log.Error("no sm, instanceid %d", instanceId)
+		log.Errorf("no sm, instanceid %d", instanceId)
 		return EmptyStateMachine
 	}
 
 	sm, exist := smFac.stateMachines[smid]
 	if !exist {
-		log.Error("unknown smid %d instanceid %d", smid, instanceId)
+		log.Errorf("unknown smid %d instanceid %d", smid, instanceId)
 		return UnknownSMID
 	}
 
 	return sm.Execute(groupIdx, instanceId, body, ctx)
 }
 
-func (smFac *SMFac) ExecuteForCheckpoint(groupIdx int, instanceId uint64, paxosValue []byte) error {
+func (smFac *SMFac) ExecuteForCheckpoint(groupIdx int32, instanceId uint64, paxosValue []byte) error {
 	if !isValidPaxosValue(paxosValue) {
-		log.Error("value wrong, instanceid %d size %d", instanceId, len(paxosValue))
+		log.Errorf("value wrong, instanceid %d size %d", instanceId, len(paxosValue))
 		return InvalidPaxosValue
 	}
 
@@ -124,12 +124,12 @@ func (smFac *SMFac) ExecuteForCheckpoint(groupIdx int, instanceId uint64, paxosV
 	return nil
 }
 
-func (smFac *SMFac) BatchExecuteForCheckpoint(groupIdx int, instanceId uint64, paxosValue []byte) error {
+func (smFac *SMFac) BatchExecuteForCheckpoint(groupIdx int32, instanceId uint64, paxosValue []byte) error {
 	var batchValue comm.BatchPaxosValues
 	err := proto.Unmarshal(paxosValue, &batchValue)
 
 	if err != nil {
-		log.Error("BatchPaxosValue wrong, instanceid %d", instanceId)
+		log.Errorf("BatchPaxosValue wrong, instanceid %d", instanceId)
 		return InvalidPaxosValue
 	}
 
@@ -146,15 +146,15 @@ func (smFac *SMFac) BatchExecuteForCheckpoint(groupIdx int, instanceId uint64, p
 
 }
 
-func (smFac *SMFac) DoExecuteForCheckpoint(groupIdx int, instanceId uint64, body []byte, smid int32) error {
+func (smFac *SMFac) DoExecuteForCheckpoint(groupIdx int32, instanceId uint64, body []byte, smid int32) error {
 	if len(smFac.stateMachines) == 0 {
-		log.Error("no sm, instanceid %d", instanceId)
+		log.Errorf("no sm, instanceid %d", instanceId)
 		return EmptyStateMachine
 	}
 
 	sm, exist := smFac.stateMachines[smid]
 	if !exist {
-		log.Error("unknown smid %d instanceid %d", smid, instanceId)
+		log.Errorf("unknown smid %d instanceid %d", smid, instanceId)
 		return UnknownSMID
 	}
 
@@ -170,15 +170,21 @@ func (smFac *SMFac) AddSM(statemachine StateMachine) {
 	smFac.stateMachines[statemachine.SMID()] = statemachine
 }
 
-func (smFac *SMFac) GetCheckpointInstanceId(groupIdx int) uint64 {
+
+func (smFac *SMFac) GetCheckpointInstanceId(groupIdx int32) uint64 {
 	cpInstanceId := comm.INVALID_INSTANCEID
 	cpInstanceId_Insize := comm.INVALID_INSTANCEID
 	haveUseSm := false
 
+	//system variables
+	//master variables
+	//if no user state machine, system and master's can use.
+	//if have user state machine, use user'state machine's checkpointinstanceid.
 	for smid, sm := range smFac.stateMachines {
-		instanceId := sm.GetCheckpointInstanceID(groupIdx)
+		instanceId := sm.GetCheckpointInstanceId(groupIdx)
 
 		if smid == comm.SYSTEM_V_SMID || smid == comm.MASTER_V_SMID {
+
 			if instanceId == comm.INVALID_INSTANCEID {
 				continue
 			}
@@ -232,16 +238,16 @@ func isValidPaxosValue(value []byte) bool {
 }
 
 // TODO
-func (smFac *SMFac) BeforePropose(groupIdx int, value []byte) {
+func (smFac *SMFac) BeforePropose(groupIdx int32, value []byte) {
 
 }
 
 // TODO
-func (smFac *SMFac) BeforeBatchPropose(groupIdx int, value []byte) {
+func (smFac *SMFac) BeforeBatchPropose(groupIdx int32, value []byte) {
 
 }
 
 // TODO
-func (smFac *SMFac) BeforeProposeCall(groupIdx int, smid int32, value []byte, change bool) {
+func (smFac *SMFac) BeforeProposeCall(groupIdx int32, smid int32, value []byte, change bool) {
 
 }

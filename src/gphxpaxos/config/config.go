@@ -12,7 +12,7 @@ import (
 type Config struct {
 	myNodeId  uint64
 	nodeCount int
-	myGroupId int
+	myGroupId int32
 
 	isFollower          bool
 	followToNodeId      uint64
@@ -21,11 +21,11 @@ type Config struct {
 	myFollowerMap       map[uint64]uint64
 	tmpNodeOnlyForLearn map[uint64]uint64
 
-	options  *comm.Options
+	options  *Options
 	majorCnt int
 }
 
-func NewConfig(options *comm.Options, groupId int ) *Config {
+func NewConfig(options *Options, groupId int ) *Config {
 	return &Config{
 		options:  options,
 		myGroupId: groupId,
@@ -33,7 +33,7 @@ func NewConfig(options *comm.Options, groupId int ) *Config {
 	}
 }
 
-func (config *Config) GetOptions() *comm.Options {
+func (config *Config) GetOptions() *Options {
 	return config.options
 }
 
@@ -45,7 +45,7 @@ func (config *Config) SyncInterval() int32 {
 	return 5
 }
 
-func (config *Config) GetMyGroupId() int {
+func (config *Config) GetMyGroupId() int32 {
 	return config.myGroupId
 }
 

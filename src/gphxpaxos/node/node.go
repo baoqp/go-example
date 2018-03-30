@@ -8,6 +8,7 @@ import (
 	"gphxpaxos/network"
 	"errors"
 	"github.com/gogo/protobuf/proto"
+	"gphxpaxos/config"
 )
 
 type Node struct {
@@ -22,7 +23,7 @@ type Node struct {
 
 var LOGPATHERR = errors.New("LogStorage Path is null")
 
-func (node *Node) InitLogStorage(options *comm.Options) (storage.LogStorage, error) {
+func (node *Node) InitLogStorage(options *config.Options) (storage.LogStorage, error) {
 	if len(options.LogStoragePath) == 0 {
 		return nil, LOGPATHERR
 	}
@@ -37,16 +38,16 @@ func (node *Node) InitLogStorage(options *comm.Options) (storage.LogStorage, err
 }
 
 // TODO
-func (node *Node) InitNetWork(options *comm.Options) (network.NetWork, error) {
+func (node *Node) InitNetWork(options *config.Options) (network.NetWork, error) {
 	return nil, nil
 }
 
 // TODO
-func (node *Node) CheckOptions(options *comm.Options) error {
+func (node *Node) CheckOptions(options *config.Options) error {
 	return nil
 }
 
-func (node *Node) InitStateMachine(options *comm.Options) {
+func (node *Node) InitStateMachine(options *config.Options) {
 	for _, groupSMInfo := range options.GroupSMInfoList {
 		for _, sm := range groupSMInfo.SMList {
 			node.AddStateMachine(groupSMInfo.GroupIdx, sm)
@@ -54,7 +55,7 @@ func (node *Node) InitStateMachine(options *comm.Options) {
 	}
 }
 
-func (node *Node) RunMaster(options *comm.Options) {
+func (node *Node) RunMaster(options *config.Options) {
 	for _, groupSMInfo := range options.GroupSMInfoList {
 		if groupSMInfo.IsUseMaster {
 			if !node.GroupList[groupSMInfo.GroupIdx].config.IsIMFollower() { // TODO 需要注意groupId就是索引，不要出现不一致
@@ -70,7 +71,7 @@ func (node *Node) RunProposalBatch() {
 	}
 }
 
-func (node *Node) Init(options *comm.Options) error {
+func (node *Node) Init(options *config.Options) error {
 	err := node.CheckOptions(options)
 	if err != nil {
 		return err
@@ -128,37 +129,37 @@ func (node *Node) Init(options *comm.Options) error {
 
 }
 
-func (node *Node) CheckGroupId(groupId int) bool {
-	if groupId < 0 || groupId >= len(node.GroupList) {
+func (node *Node) CheckGroupId(groupId int32) bool {
+	if groupId < 0 || int(groupId) >= len(node.GroupList) {
 		return false
 	}
 	return true
 }
 
 //Base function.
-func (node *Node) Propose(groupIdx int, value []byte, instanceId *uint64) error {
+func (node *Node) Propose(groupIdx int32, value []byte, instanceId *uint64) error {
 
 	return node.ProposeWithCtx(groupIdx, value, instanceId, nil)
 }
 
-func (node *Node) ProposeWithCtx(groupIdx int, value []byte, instanceId *uint64, smCtx *smbase.SMCtx) error {
+func (node *Node) ProposeWithCtx(groupIdx int32, value []byte, instanceId *uint64, smCtx *smbase.SMCtx) error {
 	if !node.CheckGroupId(groupIdx) {
 		return comm.Paxos_GroupIdxWrong
 	}
 
 	var err error
-	*instanceId, err = node.GroupList[groupIdx].GetCommitter().NewValueGetID(value, smCtx)
+	*instanceId, err = node.GroupList[int(groupIdx)].GetCommitter().NewValueGetID(value, smCtx)
 	return err
 
 }
 
-func (node *Node) GetNowInstanceID(groupIdx int) uint64 {
+func (node *Node) GetNowInstanceID(groupIdx int32) uint64 {
 
 	if !node.CheckGroupId(groupIdx) {
 		return uint64(-1)
 	}
 
-	return node.GroupList[groupIdx].GetInstance().GetNowInstanceId()
+	return node.GroupList[int(groupIdx)].GetInstance().GetNowInstanceId()
 
 }
 
@@ -174,12 +175,12 @@ func (node *Node) AddStateMachineToAllGroup(sm smbase.StateMachine) {
 	}
 }
 
-func (node *Node) AddStateMachine(groupIdx int, sm smbase.StateMachine) {
+func (node *Node) AddStateMachine(groupIdx int32, sm smbase.StateMachine) {
 	if !node.CheckGroupId(groupIdx) {
 		return
 	}
 
-	node.GroupList[groupIdx].AddStateMachine(sm)
+	node.GroupList[int(groupIdx)].AddStateMachine(sm)
 }
 
 func (node *Node) GetMyNodeId() uint64 {
@@ -245,8 +246,8 @@ func (node *Node) ContinuePaxosLogCleaner() {
 
 //------------------------------------Membership---------------------------------------//
 
-func (node *Node) ProposalMembership(systemVM *smbase.SystemVSM, groupIdx int,
-	nodeInfoList comm.NodeInfoList, version uint64) error {
+func (node *Node) ProposalMembership(systemVM *smbase.SystemVSM, groupIdx int32,
+	nodeInfoList config.NodeInfoList, version uint64) error {
 
 	var value = make([]byte, 0)
 	err := systemVM.Membership_OPValue(nodeInfoList, version, &value)
@@ -265,7 +266,7 @@ func (node *Node) ProposalMembership(systemVM *smbase.SystemVSM, groupIdx int,
 }
 
 //Show now membership.
-func (node *Node) ShowMembership(groupIdx int, nodeInfoList *comm.NodeInfoList) error {
+func (node *Node) ShowMembership(groupIdx int32, nodeInfoList *config.NodeInfoList) error {
 
 	if !node.CheckGroupId(groupIdx) {
 		return comm.Paxos_GroupIdxWrong
@@ -279,20 +280,20 @@ func (node *Node) ShowMembership(groupIdx int, nodeInfoList *comm.NodeInfoList) 
 }
 
 //Add a paxos node to membership.
-func (node *Node) AddMember(groupIdx int, oNode *comm.NodeInfo) error {
+func (node *Node) AddMember(groupIdx int32, oNode *config.NodeInfo) error {
 
 	if !node.CheckGroupId(groupIdx) {
 		return comm.Paxos_GroupIdxWrong
 	}
 
-	systemVSM := node.GroupList[groupIdx].GetConfig().GetSystemVSM()
+	systemVSM := node.GroupList[int(groupIdx)].GetConfig().GetSystemVSM()
 
 	if systemVSM.GetGid() == 0 {
 		return comm.Paxos_MembershipOp_NoGid
 	}
 
 	version := uint64(0)
-	var nodeInfoList = comm.NodeInfoList{}
+	var nodeInfoList = config.NodeInfoList{}
 	systemVSM.GetMembership(&nodeInfoList, &version)
 
 	for _, nodeInfo := range nodeInfoList {
@@ -307,22 +308,22 @@ func (node *Node) AddMember(groupIdx int, oNode *comm.NodeInfo) error {
 }
 
 //Remove a paxos node from membership.
-func (node *Node) RemoveMember(groupIdx int, oNode *comm.NodeInfo) error {
+func (node *Node) RemoveMember(groupIdx int32, oNode *config.NodeInfo) error {
 	if !node.CheckGroupId(groupIdx) {
 		return comm.Paxos_GroupIdxWrong
 	}
 
-	systemVSM := node.GroupList[groupIdx].GetConfig().GetSystemVSM()
+	systemVSM := node.GroupList[int(groupIdx)].GetConfig().GetSystemVSM()
 
 	if systemVSM.GetGid() == 0 {
 		return comm.Paxos_MembershipOp_NoGid
 	}
 
 	version := uint64(0)
-	var nodeInfoList = comm.NodeInfoList{}
+	var nodeInfoList = config.NodeInfoList{}
 	systemVSM.GetMembership(&nodeInfoList, &version)
 
-	var nodeInfoListAfter = comm.NodeInfoList{}
+	var nodeInfoListAfter = config.NodeInfoList{}
 	nodeExist := false
 	for _, nodeInfo := range nodeInfoList {
 		if nodeInfo.NodeId == oNode.NodeId {
@@ -341,22 +342,22 @@ func (node *Node) RemoveMember(groupIdx int, oNode *comm.NodeInfo) error {
 }
 
 //Change membership by one node to another node.
-func (node *Node) ChangeMember(groupIdx int, fromNode *comm.NodeInfo, toNode *comm.NodeInfo) error {
+func (node *Node) ChangeMember(groupIdx int32, fromNode *config.NodeInfo, toNode *config.NodeInfo) error {
 	if !node.CheckGroupId(groupIdx) {
 		return comm.Paxos_GroupIdxWrong
 	}
 
-	systemVSM := node.GroupList[groupIdx].GetConfig().GetSystemVSM()
+	systemVSM := node.GroupList[int(groupIdx)].GetConfig().GetSystemVSM()
 
 	if systemVSM.GetGid() == 0 {
 		return comm.Paxos_MembershipOp_NoGid
 	}
 
 	version := uint64(0)
-	var nodeInfoList = comm.NodeInfoList{}
+	var nodeInfoList = config.NodeInfoList{}
 	systemVSM.GetMembership(&nodeInfoList, &version)
 
-	var nodeInfoListAfter = comm.NodeInfoList{}
+	var nodeInfoListAfter = config.NodeInfoList{}
 	fromNodeExist := false
 	toNodeExist := false
 
@@ -385,51 +386,51 @@ func (node *Node) ChangeMember(groupIdx int, fromNode *comm.NodeInfo, toNode *co
 //------------------------------------Master---------------------------------------//
 
 //Check who is master.
-func (node *Node) GetMaster(groupIdx int) *comm.NodeInfo {
+func (node *Node) GetMaster(groupIdx int32) *config.NodeInfo {
 
 	if !node.CheckGroupId(groupIdx) {
-		return &comm.NodeInfo{NodeId: comm.NULL_NODEID}
+		return &config.NodeInfo{NodeId: comm.NULL_NODEID}
 	}
 
-	nodeInfo := &comm.NodeInfo{NodeId: node.MasterList[groupIdx].GetMasterSM().GetMaster()}
+	nodeInfo := &config.NodeInfo{NodeId: node.MasterList[int(groupIdx)].GetMasterSM().GetMaster()}
 	return nodeInfo
 }
 
 //Check who is master and get version.
-func (node *Node) GetMasterWithVersion(groupIdx int, version uint64) *comm.NodeInfo {
+func (node *Node) GetMasterWithVersion(groupIdx int32, version uint64) *config.NodeInfo {
 	if !node.CheckGroupId(groupIdx) {
-		return &comm.NodeInfo{NodeId: comm.NULL_NODEID}
+		return &config.NodeInfo{NodeId: comm.NULL_NODEID}
 	}
 
-	nodeInfo := &comm.NodeInfo{NodeId: node.MasterList[groupIdx].GetMasterSM().GetMasterWithVersion(&version)}
+	nodeInfo := &config.NodeInfo{NodeId: node.MasterList[int(groupIdx)].GetMasterSM().GetMasterWithVersion(&version)}
 	return nodeInfo
 
 }
 
 //Check is i'm master.
-func (node *Node) IsIMMaster(groupIdx int) bool {
+func (node *Node) IsIMMaster(groupIdx int32) bool {
 	if !node.CheckGroupId(groupIdx) {
 		return false
 	}
 
-	return node.MasterList[groupIdx].GetMasterSM().IsIMMaster()
+	return node.MasterList[int(groupIdx)].GetMasterSM().IsIMMaster()
 }
 
-func (node *Node) SetMasterLease(groupIdx int, leaseTimeMs int) error {
+func (node *Node) SetMasterLease(groupIdx int32, leaseTimeMs int) error {
 	if !node.CheckGroupId(groupIdx) {
 		return comm.Paxos_GroupIdxWrong
 	}
 
-	node.MasterList[groupIdx].SetLeaseTime(leaseTimeMs)
+	node.MasterList[int(groupIdx)].SetLeaseTime(leaseTimeMs)
 	return nil
 }
 
-func (node *Node) DropMaster(groupIdx int) error {
+func (node *Node) DropMaster(groupIdx int32) error {
 	if !node.CheckGroupId(groupIdx) {
 		return comm.Paxos_GroupIdxWrong
 	}
 
-	node.MasterList[groupIdx].DropMaster()
+	node.MasterList[int(groupIdx)].DropMaster()
 	return nil
 }
 
@@ -438,20 +439,20 @@ func (node *Node) DropMaster(groupIdx int) error {
 //If many threads propose same group, that some threads will be on waiting status.
 //Set max hold threads, and we will reject some propose request to avoid to many threads be holded.
 //Reject propose request will get retcode(PaxosTryCommitRet_TooManyThreadWaiting_Reject), check on def.h.
-func (node *Node) SetMaxHoldThreads(groupIdx int, maxHoldThreads int) {
+func (node *Node) SetMaxHoldThreads(groupIdx int32, maxHoldThreads int) {
 	if !node.CheckGroupId(groupIdx) {
 		return
 	}
-	node.GroupList[groupIdx].GetCommitter().SetMaxHoldThreads(int32(maxHoldThreads))
+	node.GroupList[int(groupIdx)].GetCommitter().SetMaxHoldThreads(int32(maxHoldThreads))
 }
 
 //To avoid threads be holded too long time, we use this threshold to reject some propose to control thread's wait time.
-func (node *Node) SetProposeWaitTimeThresholdMS(groupIdx int, iWaitTimeThresholdMS int) {
+func (node *Node) SetProposeWaitTimeThresholdMS(groupIdx int32, iWaitTimeThresholdMS int) {
 	// TODO
 }
 
 //write disk
-func (node *Node) SetLogSync(groupIdx int, logSync bool) {
+func (node *Node) SetLogSync(groupIdx int32, logSync bool) {
 	if !node.CheckGroupId(groupIdx) {
 		return
 	}
@@ -467,12 +468,12 @@ type ValuePair struct {
 	SMID  int32
 }
 
-func (node *Node) GetInstanceValue(groupIdx int, instanceId uint64, retValues *[]*ValuePair) error {
+func (node *Node) GetInstanceValue(groupIdx int32, instanceId uint64, retValues *[]*ValuePair) error {
 	if !node.CheckGroupId(groupIdx) {
 		return comm.Paxos_GroupIdxWrong
 	}
 
-	value, smid, err := node.GroupList[groupIdx].GetInstance().GetInstanceValue(instanceId)
+	value, smid, err := node.GroupList[int(groupIdx)].GetInstance().GetInstanceValue(instanceId)
 
 	if err != nil {
 		return err
@@ -504,11 +505,11 @@ func (node *Node) GetInstanceValue(groupIdx int, instanceId uint64, retValues *[
 //Warning: BatchProposal will have same llInstanceID returned but different iBatchIndex.
 //Batch values's execute order in StateMachine is certain, the return value iBatchIndex
 //means the execute order index, start from 0.
-func (node *Node) BatchPropose(groupIdx int, value []byte, instanceId uint64, batchIndex uint32) error {
+func (node *Node) BatchPropose(groupIdx int32, value []byte, instanceId uint64, batchIndex uint32) error {
 	return node.BatchProposeWithCtx(groupIdx, value, instanceId, batchIndex, nil)
 }
 
-func (node *Node) BatchProposeWithCtx(groupIdx int, value []byte, instanceId uint64, batchIndex uint32, smCtx *smbase.SMCtx) error {
+func (node *Node) BatchProposeWithCtx(groupIdx int32, value []byte, instanceId uint64, batchIndex uint32, smCtx *smbase.SMCtx) error {
 
 	if !node.CheckGroupId(groupIdx) {
 		return comm.Paxos_GroupIdxWrong
@@ -518,13 +519,13 @@ func (node *Node) BatchProposeWithCtx(groupIdx int, value []byte, instanceId uin
 		return comm.Paxos_SystemError
 	}
 
-	return node.ProposeBatchList[groupIdx].Propose(value, instanceId, batchIndex, smCtx)
+	return node.ProposeBatchList[int(groupIdx)].Propose(value, instanceId, batchIndex, smCtx)
 
 }
 
 //PhxPaxos will batch proposal while waiting proposals count reach to BatchCount,
 //or wait time reach to BatchDelayTimeMs.
-func (node *Node) SetBatchCount(groupIdx int, batchCount int) {
+func (node *Node) SetBatchCount(groupIdx int32, batchCount int) {
 
 	if !node.CheckGroupId(groupIdx) {
 		return
@@ -534,10 +535,10 @@ func (node *Node) SetBatchCount(groupIdx int, batchCount int) {
 		return
 	}
 
-	node.ProposeBatchList[groupIdx].SetBatchCount(batchCount)
+	node.ProposeBatchList[int(groupIdx)].SetBatchCount(batchCount)
 }
 
-func (node *Node) SetBatchDelayTimeMs(groupIdx int, delay uint64) {
+func (node *Node) SetBatchDelayTimeMs(groupIdx int32, delay uint64) {
 	if !node.CheckGroupId(groupIdx) {
 		return
 	}
@@ -546,6 +547,5 @@ func (node *Node) SetBatchDelayTimeMs(groupIdx int, delay uint64) {
 		return
 	}
 
-	node.ProposeBatchList[groupIdx].SetBatchDelayTimeMs(delay)
+	node.ProposeBatchList[int(groupIdx)].SetBatchDelayTimeMs(delay)
 }
-

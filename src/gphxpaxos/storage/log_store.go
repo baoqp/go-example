@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"gphxpaxos/comm"
 	"github.com/golang/protobuf/proto"
+	"gphxpaxos/config"
 )
 
 // 存储value
@@ -23,7 +24,6 @@ type LogStore struct {
 	readMutex        sync.Mutex
 	mutex            sync.Mutex
 	deletedMaxFileId int32 // 已删除的最大的fielId
-	insideOptions    *comm.InsideOptions
 }
 
 func NewLogStore() *LogStore {
@@ -514,7 +514,7 @@ func (logStore *LogStore) expendFile(file *os.File, fileSize *uint64) error {
 	*fileSize = uint64(size)
 
 	if *fileSize == 0 {
-		maxLogFileSize := logStore.insideOptions.GetLogFileMaxSize()
+		maxLogFileSize := config.GetLogFileMaxSize()
 		size, err = file.Seek(int64(maxLogFileSize-1), os.SEEK_SET)
 		*fileSize = uint64(size)
 		if err != nil {

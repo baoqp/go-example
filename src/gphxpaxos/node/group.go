@@ -5,7 +5,6 @@ import (
 	"gphxpaxos/config"
 	"gphxpaxos/algorithm"
 	"gphxpaxos/storage"
-	"gphxpaxos/comm"
 	"gphxpaxos/master"
 	"gphxpaxos/checkpoint"
 	"gphxpaxos/smbase"
@@ -18,7 +17,7 @@ type Group struct {
 }
 
 func NewGroup(logstorage storage.LogStorage, network_ network.NetWork, masterSM *master.MasterStateMachine,
-	groupId int, options *comm.Options) (*Group, error) {
+	groupId int, options *config.Options) (*Group, error) {
 
 	group := &Group{}
 	group.config = config.NewConfig(options, groupId)

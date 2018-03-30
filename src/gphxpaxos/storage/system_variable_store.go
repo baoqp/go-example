@@ -16,7 +16,7 @@ func NewSystemVariablesStore(logstorage LogStorage) *SystemVariablesStore {
 	}
 }
 
-func (s *SystemVariablesStore) Write(writeOptions *WriteOptions, groupId int,
+func (s *SystemVariablesStore) Write(writeOptions *WriteOptions, groupIdx int32,
 	variables *comm.SystemVariables) error {
 
 	buffer, err := proto.Marshal(variables)
@@ -26,11 +26,11 @@ func (s *SystemVariablesStore) Write(writeOptions *WriteOptions, groupId int,
 		return nil
 	}
 
-	err = s.logstorage.SetSystemVariables(writeOptions, groupId, buffer)
+	err = s.logstorage.SetSystemVariables(writeOptions, groupIdx, buffer)
 
 	if err != nil {
 		log.Errorf("DB.Put fail, groupidx %d bufferlen %zu ret %v",
-			groupId, len(buffer), err)
+			groupIdx, len(buffer), err)
 		return err
 	}
 
@@ -38,8 +38,8 @@ func (s *SystemVariablesStore) Write(writeOptions *WriteOptions, groupId int,
 }
 
 
-func (s *SystemVariablesStore) Read(groupId int, variables *comm.SystemVariables) error {
-	buffer, err := s.logstorage.GetSystemVariables(groupId)
+func (s *SystemVariablesStore) Read(groupIdx int32, variables *comm.SystemVariables) error {
+	buffer, err := s.logstorage.GetSystemVariables(groupIdx)
 	if err != nil {
 		return err
 	}

@@ -6,10 +6,10 @@ import (
 	"gphxpaxos/checkpoint"
 	log "github.com/sirupsen/logrus"
 	"os"
-	"gphxpaxos/node"
 	"gphxpaxos/util"
 	"math"
 	"gphxpaxos/comm"
+	"gphxpaxos/smbase"
 )
 
 const tmpBufferLen = 102400
@@ -18,7 +18,7 @@ type CheckpointSender struct {
 	sendNodeId        uint64
 	config            *config.Config
 	learner           *Learner
-	factory           *node.SMFac
+	factory           *smbase.SMFac
 	ckMnger           *checkpoint.CheckpointManager
 	uuid              uint64
 	sequence          uint64
@@ -31,7 +31,7 @@ type CheckpointSender struct {
 }
 
 func NewCheckpointSender(sendNodeId uint64, config *config.Config, learner *Learner,
-	factory *node.SMFac,
+	factory *smbase.SMFac,
 	ckmnger *checkpoint.CheckpointManager) *CheckpointSender {
 	cksender := &CheckpointSender{
 		sendNodeId: sendNodeId,
@@ -93,7 +93,7 @@ func (checkpointSender *CheckpointSender) main() {
 
 func (checkpointSender *CheckpointSender) LockCheckpoint() error {
 	smList := checkpointSender.factory.GetSMList()
-	lockSmList := make([] node.StateMachine, 0)
+	lockSmList := make([] smbase.StateMachine, 0)
 
 	var err error
 	for _, sm := range smList {
@@ -124,7 +124,7 @@ func (checkpointSender *CheckpointSender) UnlockCheckpoint() {
 func (checkpointSender *CheckpointSender) SendCheckpoint() error {
 	learner := checkpointSender.learner
 	err := learner.SendCheckpointBegin(checkpointSender.sendNodeId, checkpointSender.uuid, checkpointSender.sequence,
-		checkpointSender.factory.GetCheckpointInstanceID(checkpointSender.config.GetMyGroupId()))
+		checkpointSender.factory.GetCheckpointInstanceId(checkpointSender.config.GetMyGroupId()))
 	if err != nil {
 		log.Errorf("SendCheckpoint fail: %v \r\n", err)
 		return err
@@ -141,7 +141,7 @@ func (checkpointSender *CheckpointSender) SendCheckpoint() error {
 	}
 
 	err = learner.SendCheckpointEnd(checkpointSender.sendNodeId, checkpointSender.uuid, checkpointSender.sequence,
-		checkpointSender.factory.GetCheckpointInstanceID(checkpointSender.config.GetMyGroupId()))
+		checkpointSender.factory.GetCheckpointInstanceId(checkpointSender.config.GetMyGroupId()))
 
 	if err != nil {
 		log.Errorf("SendCheckpointEnd fail: %v \r\n", err)
@@ -150,7 +150,7 @@ func (checkpointSender *CheckpointSender) SendCheckpoint() error {
 	return err
 }
 
-func (checkpointSender *CheckpointSender) SendCheckpointForSM(statemachine node.StateMachine) error {
+func (checkpointSender *CheckpointSender) SendCheckpointForSM(statemachine smbase.StateMachine) error {
 	var dirPath string
 	var fileList = make([]string, 0)
 
@@ -177,7 +177,7 @@ func (checkpointSender *CheckpointSender) SendCheckpointForSM(statemachine node.
 	return nil
 }
 
-func (checkpointSender *CheckpointSender) SendFile(statemachine node.StateMachine, dir string, file string) error {
+func (checkpointSender *CheckpointSender) SendFile(statemachine smbase.StateMachine, dir string, file string) error {
 	path := dir + file
 
 	_, exist := checkpointSender.alreadySendedFile[path]
@@ -202,7 +202,7 @@ func (checkpointSender *CheckpointSender) SendFile(statemachine node.StateMachin
 			break
 		}
 
-		err = checkpointSender.SendBuffer(statemachine.SMID(), statemachine.GetCheckpointInstanceID(checkpointSender.config.GetMyGroupId()),
+		err = checkpointSender.SendBuffer(statemachine.SMID(), statemachine.GetCheckpointInstanceId(checkpointSender.config.GetMyGroupId()),
 			path, offset, checkpointSender.tmpBuffer, readLen)
 		if err != nil {
 			fd.Close()

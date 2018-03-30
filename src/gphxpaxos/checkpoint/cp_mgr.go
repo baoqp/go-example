@@ -3,7 +3,6 @@ package checkpoint
 import (
 	"gphxpaxos/config"
 	"gphxpaxos/storage"
-	"gphxpaxos/node"
 	"gphxpaxos/util"
 	"gphxpaxos/smbase"
 )
@@ -24,7 +23,7 @@ type CheckpointManager struct {
 	lastAskforCheckpointTime uint64
 }
 
-func NewCheckpointManager(config *config.Config, factory *node.SMFac,
+func NewCheckpointManager(config *config.Config, factory *smbase.SMFac,
 	logStorage storage.LogStorage, useReplayer bool) *CheckpointManager {
 
 	mnger := &CheckpointManager{
@@ -73,7 +72,6 @@ func (checkpointManager *CheckpointManager) GetRelayer() *Replayer {
 	return checkpointManager.replayer
 }
 
-
 func (checkpointManager *CheckpointManager) GetCleaner() *Cleaner {
 	return checkpointManager.cleaner
 }
@@ -114,7 +112,7 @@ func (checkpointManager *CheckpointManager) SetMaxChosenInstanceID(instanceId ui
 func (checkpointManager *CheckpointManager) SetMinChosenInstanceId(instanceId uint64) error {
 
 	options := &storage.WriteOptions{
-		Sync:true,
+		Sync: true,
 	}
 
 	err := checkpointManager.logStorage.SetMinChosenInstanceId(options, checkpointManager.groupId(), instanceId)
@@ -127,9 +125,9 @@ func (checkpointManager *CheckpointManager) SetMinChosenInstanceId(instanceId ui
 }
 
 func (checkpointManager *CheckpointManager) GetCheckpointInstanceID() uint64 {
-	return checkpointManager.factory.GetCheckpointInstanceID(checkpointManager.groupId())
+	return checkpointManager.factory.GetCheckpointInstanceId(checkpointManager.groupId())
 }
 
-func (checkpointManager *CheckpointManager) groupId() int {
+func (checkpointManager *CheckpointManager) groupId() int32 {
 	return checkpointManager.config.GetMyGroupId()
 }

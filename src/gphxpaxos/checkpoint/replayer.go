@@ -5,7 +5,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"gphxpaxos/config"
 	"gphxpaxos/storage"
-	"gphxpaxos/node"
+
 	"gphxpaxos/util"
 	"gphxpaxos/comm"
 	"gphxpaxos/smbase"

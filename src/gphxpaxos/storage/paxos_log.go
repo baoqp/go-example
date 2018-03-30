@@ -15,7 +15,7 @@ func NewPaxosLog(logStorage LogStorage) *PaxosLog {
 	return &PaxosLog{logStorage: logStorage}
 }
 
-func (paxosLog *PaxosLog) WriteLog(options *WriteOptions, groupIdx int,
+func (paxosLog *PaxosLog) WriteLog(options *WriteOptions, groupIdx int32,
 	instanceId uint64, value []byte) error {
 
 	state := &comm.AcceptorStateData{
@@ -29,7 +29,7 @@ func (paxosLog *PaxosLog) WriteLog(options *WriteOptions, groupIdx int,
 	return paxosLog.WriteState(options, groupIdx, instanceId, state)
 }
 
-func (paxosLog *PaxosLog) ReadLog(groupIdx int, instanceId uint64) ([]byte, error) {
+func (paxosLog *PaxosLog) ReadLog(groupIdx int32, instanceId uint64) ([]byte, error) {
 	var state = &comm.AcceptorStateData{}
 	err := paxosLog.ReadState(groupIdx, instanceId, state)
 
@@ -43,7 +43,7 @@ func (paxosLog *PaxosLog) ReadLog(groupIdx int, instanceId uint64) ([]byte, erro
 	return value, nil
 }
 
-func (paxosLog *PaxosLog) GetMaxInstanceIdFromLog(groupIdx int) (uint64, error) {
+func (paxosLog *PaxosLog) GetMaxInstanceIdFromLog(groupIdx int32) (uint64, error) {
 	instanceId, err := paxosLog.logStorage.GetMaxInstanceId(groupIdx)
 	if err != nil {
 		log.Errorf("db.getmax fail, error:%v", err)
@@ -53,7 +53,7 @@ func (paxosLog *PaxosLog) GetMaxInstanceIdFromLog(groupIdx int) (uint64, error) 
 	return instanceId, nil
 }
 
-func (paxosLog *PaxosLog) WriteState(options *WriteOptions, groupIdx int, instanceId uint64,
+func (paxosLog *PaxosLog) WriteState(options *WriteOptions, groupIdx int32, instanceId uint64,
 	state *comm.AcceptorStateData) error {
 
 	value, err := proto.Marshal(state)
@@ -70,7 +70,7 @@ func (paxosLog *PaxosLog) WriteState(options *WriteOptions, groupIdx int, instan
 	return nil
 }
 
-func (paxosLog *PaxosLog) ReadState(groupIdx int, instanceId uint64, state *comm.AcceptorStateData) (error) {
+func (paxosLog *PaxosLog) ReadState(groupIdx int32, instanceId uint64, state *comm.AcceptorStateData) (error) {
 	value, err := paxosLog.logStorage.Get(groupIdx, instanceId)
 
 	if err != nil {

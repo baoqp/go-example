@@ -31,8 +31,8 @@ type CheckpointSender struct {
 }
 
 func NewCheckpointSender(sendNodeId uint64, config *config.Config, learner *Learner,
-	factory *smbase.SMFac,
-	ckmnger *checkpoint.CheckpointManager) *CheckpointSender {
+	factory *smbase.SMFac, ckmnger *checkpoint.CheckpointManager) *CheckpointSender {
+
 	cksender := &CheckpointSender{
 		sendNodeId: sendNodeId,
 		config:     config,
@@ -43,8 +43,12 @@ func NewCheckpointSender(sendNodeId uint64, config *config.Config, learner *Lear
 		tmpBuffer:  make([]byte, tmpBufferLen),
 	}
 
-	util.StartRoutine(cksender.main)
+
 	return cksender
+}
+
+func (checkpointSender *CheckpointSender) Start() {
+	util.StartRoutine(checkpointSender.main)
 }
 
 func (checkpointSender *CheckpointSender) Stop() {
@@ -65,16 +69,16 @@ func (checkpointSender *CheckpointSender) main() {
 	checkpointSender.absLastAckTime = util.NowTimeMs()
 
 	needContinue := false
-	for !checkpointSender.ckMnger.GetRelayer().IsPaused() {
+	for !checkpointSender.ckMnger.GetReplayer().IsPaused() {
 		if checkpointSender.isEnd {
 			checkpointSender.isEnded = true
 			return
 		}
 
 		needContinue = true
-		checkpointSender.ckMnger.GetRelayer().Pause()
+		checkpointSender.ckMnger.GetReplayer().Pause()
 		log.Debug("wait replayer pause")
-		util.SleepMs(100)
+		util.SleepMs(200)
 	}
 
 	err := checkpointSender.LockCheckpoint()
@@ -84,7 +88,7 @@ func (checkpointSender *CheckpointSender) main() {
 	}
 
 	if needContinue {
-		checkpointSender.ckMnger.GetRelayer().Continue()
+		checkpointSender.ckMnger.GetReplayer().Continue()
 	}
 
 	log.Info("Checkpoint.Sender [END]")
@@ -202,7 +206,8 @@ func (checkpointSender *CheckpointSender) SendFile(statemachine smbase.StateMach
 			break
 		}
 
-		err = checkpointSender.SendBuffer(statemachine.SMID(), statemachine.GetCheckpointInstanceId(checkpointSender.config.GetMyGroupId()),
+		err = checkpointSender.SendBuffer(statemachine.SMID(),
+			statemachine.GetCheckpointInstanceId(checkpointSender.config.GetMyGroupId()),
 			path, offset, checkpointSender.tmpBuffer, readLen)
 		if err != nil {
 			fd.Close()

@@ -66,6 +66,26 @@ func (masterSM *MasterStateMachine) Init() error {
 	return nil
 }
 
+func (masterSM *MasterStateMachine) GetCheckpointInstanceId(groupIdx int32) uint64 {
+	return masterSM.masterVersion
+}
+
+func (masterSM *MasterStateMachine) LoadCheckpointState(groupIdx int32, checkpointTmpFileDirPath string,
+	fileList []string, checkpointInstanceID uint64) error {
+
+	return nil
+}
+
+func (masterSM *MasterStateMachine) UnLockCheckpointState() {
+
+}
+
+func (masterSM *MasterStateMachine) LoadCheckpointState(groupIdx int32, checkpointTmpFileDirPath string,
+	fileList []string, checkpointInstanceID uint64) error {
+
+	return nil
+}
+
 func (masterSM *MasterStateMachine) UpdateMasterToStore(masterNodeId uint64, version uint64,
 	leaseTime int32) error {
 

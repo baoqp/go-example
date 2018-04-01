@@ -46,6 +46,24 @@ func (systemVSM *SystemVSM) Init() error {
 	return nil
 }
 
+func (systemVSM *SystemVSM) GetCheckpointInstanceId(groupIdx int32) uint64 {
+	return systemVSM.systemVariables.GetVersion()
+}
+
+func (systemVSM *SystemVSM) LoadCheckpointState(groupIdx int32, checkpointTmpFileDirPath string,
+	fileList []string, checkpointInstanceID uint64) error {
+
+	return nil
+}
+
+func (systemVSM *SystemVSM) UnLockCheckpointState() {
+
+}
+
+func (systemVSM *SystemVSM) LockCheckpointState() error {
+	return nil
+}
+
 func (systemVSM *SystemVSM) UpdateSystemVariables(variables *comm.SystemVariables) error {
 	writeOpt := &storage.WriteOptions{Sync: true}
 	err := systemVSM.systemStore.Write(writeOpt, systemVSM.myGroupId, variables)

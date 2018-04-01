@@ -181,7 +181,7 @@ func (proposer *Proposer) NewValue(value []byte, timeOutMs uint32) {
 	proposer.timeOutMs = timeOutMs
 	proposer.lastStartTimeMs = util.NowTimeMs()
 
-	// TODO paxos的优化 multi-paxos
+	// TODO paxos的优化 multi-paxos  ???
 	if proposer.canSkipPrepare && !proposer.wasRejectBySomeone {
 		log.Infof("skip prepare,directly start accept")
 		proposer.accept()
@@ -203,7 +203,7 @@ func (proposer *Proposer) isTimeout() bool {
 		proposer.instance.commitctx.setResult(comm.PaxosTryCommitRet_Timeout, proposer.instanceId, []byte(""))
 		return true
 	}
-	proposer.timeOutMs -= uint32(diff)
+	proposer.timeOutMs -= uint32(diff)  // 不断减去消耗的时间，当余量<=0说明已经超时
 	proposer.lastStartTimeMs = now
 
 	return false
@@ -401,7 +401,6 @@ func (proposer *Proposer) OnAcceptReply(msg *comm.PaxosMsg) error {
 		proposer.learner.ProposerSendSuccess(base.GetInstanceId(), state.GetProposalId())
 		log.Infof("[%s]instance %d passed", proposer.instance.String(), msg.GetInstanceID())
 	} else {
-
 		proposer.addAcceptTimer(uint32(rand.Intn(30) + 10))
 	}
 

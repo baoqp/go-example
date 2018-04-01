@@ -57,6 +57,7 @@ func (replayer *Replayer) Continue() {
 }
 
 func (replayer *Replayer) main() {
+
 	instanceId := replayer.factory.GetCheckpointInstanceId(replayer.config.GetMyGroupId()) + 1
 
 	for {

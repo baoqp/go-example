@@ -324,7 +324,7 @@ func (database *Database) rebuildOneIndex(instanceId uint64, fileIdstr string) e
 
 }
 
-// TODO for what ????
+
 func (database *Database) SetMinChosenInstanceId(writeOptions *WriteOptions, mininstanceId uint64) error {
 	if !database.hasInit {
 		log.Errorf("no init yet")

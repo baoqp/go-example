@@ -150,7 +150,7 @@ func (learnerSender *LearnerSender) Ack(ackInstanceId uint64, fromNodeId uint64)
 	learnerSender.mutex.Lock()
 	if learnerSender.IsImSending() && learnerSender.isConfirmed {
 		if learnerSender.sendToNodeID == fromNodeId {
-			if learnerSender.ackInstanceID > learnerSender.ackInstanceID {
+			if ackInstanceId > learnerSender.ackInstanceID {
 				learnerSender.ackInstanceID = ackInstanceId
 				learnerSender.absLastAckTime = util.NowTimeMs()
 			}

@@ -68,7 +68,7 @@ func (checkpointManager *CheckpointManager) Stop() {
 	checkpointManager.cleaner.Stop()
 }
 
-func (checkpointManager *CheckpointManager) GetRelayer() *Replayer {
+func (checkpointManager *CheckpointManager) GetReplayer() *Replayer {
 	return checkpointManager.replayer
 }
 
@@ -105,9 +105,10 @@ func (checkpointManager *CheckpointManager) GetMaxChosenInstanceID() uint64 {
 	return checkpointManager.maxChosenInstanceId
 }
 
-func (checkpointManager *CheckpointManager) SetMaxChosenInstanceID(instanceId uint64) {
+func (checkpointManager *CheckpointManager) SetMaxChosenInstanceId(instanceId uint64) {
 	checkpointManager.maxChosenInstanceId = instanceId
 }
+
 
 func (checkpointManager *CheckpointManager) SetMinChosenInstanceId(instanceId uint64) error {
 

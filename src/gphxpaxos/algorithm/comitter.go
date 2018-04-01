@@ -44,6 +44,7 @@ func newCommitContext(instance *Instance) *CommitContext {
 
 func (commitContext *CommitContext) newCommit(value []byte, timeoutMs uint32, context *smbase.SMCtx) {
 	commitContext.mutex.Lock()
+	defer commitContext.mutex.Unlock()
 
 	commitContext.instanceId = comm.INVALID_INSTANCEID
 	commitContext.commitEnd = false
@@ -52,8 +53,6 @@ func (commitContext *CommitContext) newCommit(value []byte, timeoutMs uint32, co
 	commitContext.end = 0
 	commitContext.start = util.NowTimeMs()
 	commitContext.timeoutMs = timeoutMs
-
-	commitContext.mutex.Unlock()
 }
 
 func (commitContext *CommitContext) isNewCommit() bool {
@@ -72,18 +71,22 @@ func (commitContext *CommitContext) getCommitValue() [] byte {
 	return commitContext.value
 }
 
+// 是否是本节点自己提交的消息
 func (commitContext *CommitContext) IsMyCommit(nodeId uint64, instanceId uint64, learnValue []byte) (bool, *smbase.SMCtx) {
 	commitContext.mutex.Lock()
 	defer commitContext.mutex.Unlock()
+
+	isMyCommit := false
+	var ctx *smbase.SMCtx
 
 	if nodeId != commitContext.instance.config.GetMyNodeId() {
 		log.Debug("[%s]%d not my instance id", commitContext.instance.String(), nodeId)
 		return false, nil
 	}
 
-	var ctx *smbase.SMCtx
-	isMyCommit := false
-
+	isMyCommit = true
+	// TODO
+	/*
 	if !commitContext.commitEnd && commitContext.instanceId == instanceId {
 		if bytes.Compare(commitContext.value, learnValue) == 0 {
 			isMyCommit = true
@@ -92,6 +95,7 @@ func (commitContext *CommitContext) IsMyCommit(nodeId uint64, instanceId uint64,
 			isMyCommit = false
 		}
 	}
+	*/
 
 	if isMyCommit {
 		ctx = commitContext.stateMachineContext
@@ -156,8 +160,7 @@ type Committer struct {
 	config    *config.Config
 	commitCtx *CommitContext
 	factory   *smbase.SMFac
-
-	instance *Instance
+	instance  *Instance
 
 	timeoutMs   uint32
 	lastLogTime uint64
@@ -174,9 +177,8 @@ func newCommitter(instance *Instance) *Committer {
 	}
 }
 func (committer *Committer) SetMaxHoldThreads(maxHoldThreads int32) {
-	committer.waitLock.WaitCount = maxHoldThreads
+	committer.waitLock.MaxWaitCount = maxHoldThreads
 }
-
 
 func (committer *Committer) SetTimeoutMs(timeout uint32) {
 	committer.timeoutMs = timeout
@@ -206,13 +208,14 @@ func (committer *Committer) NewValueGetID(value []byte, context *smbase.SMCtx) (
 }
 
 func (committer *Committer) newValueGetIDNoRetry(value []byte, context *smbase.SMCtx) (uint64, error) {
+
 	lockUseTime, err := committer.waitLock.Lock(int(committer.timeoutMs))
 
 	if err == util.Waitlock_Timeout {
 		return 0, comm.PaxosTryCommitRet_WaitTimeout
 	}
 
-	if committer.timeoutMs <= uint32(200+lockUseTime) {
+	if committer.timeoutMs <= uint32(200 + lockUseTime) {
 		committer.waitLock.Unlock()
 		committer.timeoutMs = 0
 		return 0, comm.PaxosTryCommitRet_Timeout
@@ -225,7 +228,7 @@ func (committer *Committer) newValueGetIDNoRetry(value []byte, context *smbase.S
 		smid = context.SMID
 	}
 
-	packValue := committer.factory.PackPaxosValue(value, int32(smid))  // TODO 把所有的int都替换成int32
+	packValue := committer.factory.PackPaxosValue(value,  smid)
 	committer.commitCtx.newCommit(packValue, leftTimeoutMs, context)
 	committer.instance.sendCommitMsg()
 

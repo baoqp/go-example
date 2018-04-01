@@ -16,10 +16,9 @@ func StartRoutine(f func()) {
 		f()
 	}()
 
-	<- startChan
+	<-startChan
 	fmt.Println("start Routine done ")
 }
-
 
 type TimerThread struct {
 	// save timer id
@@ -58,14 +57,15 @@ type Timer struct {
 	TimerType int
 }
 
+// TODO 实现一个高性能的Delay queue
 func NewTimerThread() *TimerThread {
 	timerThread := &TimerThread{
-		nowTimerId: 1,
-		existTimerIdMap:make(map[uint32]bool,0),
-		newTimerList: list.New(),
+		nowTimerId:       1,
+		existTimerIdMap:  make(map[uint32]bool, 0),
+		newTimerList:     list.New(),
 		currentTimerList: list.New(),
-		end: false,
-		now: NowTimeMs(),
+		end:              false,
+		now:              NowTimeMs(),
 	}
 
 	StartRoutine(timerThread.main)
@@ -76,18 +76,16 @@ func (timerThread *TimerThread) Stop() {
 	timerThread.end = true
 }
 
-// TODO 从处理逻辑中可以看出timerThread中各个Timer的timeOut并不是排序的，感觉有点问题。 完成一个类似于Java DelayQueue的数据结构
 func (timerThread *TimerThread) main() {
 	for !timerThread.end {
 		// fire every 1 ms
 		timerChan := time.NewTimer(1 * time.Millisecond).C
-		<- timerChan
+		<-timerChan
 		timerThread.now = NowTimeMs()
 
-	again:
-	// iterator current timer list
+		// iterator current timer list
 		len := timerThread.currentTimerList.Len()
-		for i:=0; i < len; i++ {
+		for i := 0; i < len; i++ {
 			obj := timerThread.currentTimerList.Front()
 			timer := obj.Value.(*Timer)
 			if timer.AbsTime > timerThread.now { // 时间还未到
@@ -98,16 +96,22 @@ func (timerThread *TimerThread) main() {
 			timerThread.fireTimeout(timer)
 		}
 
-		// if current timer list is empty, then exchange two list
-		//if timerThread.currentTimerList.Len() == 0 {
-			timerThread.mutex.Lock()
-			tmp := timerThread.currentTimerList
-			timerThread.currentTimerList = timerThread.newTimerList
-			timerThread.newTimerList = tmp
-			timerThread.mutex.Unlock()
-			// check timeout agant
-			goto again
-		//}
+		timerThread.mutex.Lock()
+		if timerThread.currentTimerList.Len() > 0 && timerThread.newTimerList.Len() > 0 {
+			currentFirstTimer := timerThread.currentTimerList.Front().Value.(*Timer)
+			newFirstTimer := timerThread.newTimerList.Front().Value.(*Timer)
+			if currentFirstTimer.AbsTime > newFirstTimer.AbsTime {
+				timerThread.currentTimerList, timerThread.newTimerList =
+					timerThread.newTimerList,timerThread.currentTimerList
+			}
+		} else if timerThread.currentTimerList.Len() == 0{
+			timerThread.currentTimerList, timerThread.newTimerList =
+				timerThread.newTimerList,timerThread.currentTimerList
+		}
+
+
+		timerThread.mutex.Unlock()
+
 	}
 }
 
@@ -119,7 +123,7 @@ func (timerThread *TimerThread) fireTimeout(timer *Timer) {
 
 	if ok {
 		log.Debug("fire timeout:%v, %d", timer.Obj, timer.TimerType)
-		timer.Obj.OnTimeout(timer)
+		timer.Obj.OnTimeout(timer) // TODO　需要在新的线程中么
 	}
 }
 
@@ -130,11 +134,17 @@ func (timerThread *TimerThread) AddTimer(timeoutMs uint32, timeType int, obj Tim
 	timerId := timerThread.nowTimerId
 	timerThread.nowTimerId += 1
 
-	for _, atimer := range timerThread.newTimerList {
-
+	var e *list.Element = nil
+	for e = timerThread.newTimerList.Front(); e != nil; e = e.Next() {
+		if e.Value.(*Timer).AbsTime > timer.AbsTime {
+			timerThread.newTimerList.InsertBefore(timer, e)
+			break
+		}
 	}
 
-	timerThread.newTimerList.PushBack(timer)
+	if e == nil {
+		timerThread.newTimerList.PushBack(timer)
+	}
 
 	// add into exist timer map
 	timerThread.mapMutex.Lock()

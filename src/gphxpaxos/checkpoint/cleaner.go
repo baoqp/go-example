@@ -27,6 +27,7 @@ type Cleaner struct {
 
 func NewCleaner(config *config.Config, factory *smbase.SMFac,
 	logStorage storage.LogStorage, mnger *CheckpointManager) *Cleaner {
+
 	cleaner := &Cleaner{
 		config:     config,
 		logStorage: logStorage,
@@ -76,10 +77,10 @@ func (cleaner *Cleaner) main() {
 		}
 
 		instanceId := cleaner.ckmnger.GetMinChosenInstanceID()
-		maxInstanceId := cleaner.ckmnger.GetMinChosenInstanceID()
+		maxInstanceId := cleaner.ckmnger.GetMaxChosenInstanceID()
 		cpInstanceId := cleaner.factory.GetCheckpointInstanceId(cleaner.config.GetMyGroupId()) + 1
 
-		//
+		// holdCount : 保留的log条数
 		for instanceId+cleaner.holdCount < cpInstanceId && instanceId+cleaner.holdCount < maxInstanceId {
 			err := cleaner.DeleteOne(instanceId)
 			if err != nil {
@@ -89,7 +90,7 @@ func (cleaner *Cleaner) main() {
 
 			instanceId += 1
 			deleteCnt += 1
-			if deleteCnt >= deleteInterval { // TODO ???
+			if deleteCnt >= deleteInterval {
 				deleteCnt = 0
 				time.Sleep(time.Duration(sleepMs) * time.Millisecond)
 			}
@@ -108,6 +109,7 @@ func (cleaner *Cleaner) main() {
 }
 
 func (cleaner *Cleaner) FixMinChosenInstanceID(oldMinChosenInstanceId uint64) error {
+
 	cpInstanceId := cleaner.factory.GetCheckpointInstanceId(cleaner.config.GetMyGroupId()) + 1
 	fixMinChosenInstanceId := oldMinChosenInstanceId
 
@@ -144,6 +146,7 @@ func (cleaner *Cleaner) DeleteOne(instanceId uint64) error {
 	}
 
 	cleaner.ckmnger.SetMinChosenInstanceId(instanceId)
+	// TODO ??? 见上面的FixMinChosenInstanceID
 	if instanceId >= cleaner.lastSaveInstanceId + comm.DELETE_SAVE_INTERVAL {
 		err := cleaner.ckmnger.SetMinChosenInstanceId(instanceId + 1)
 		if err != nil {

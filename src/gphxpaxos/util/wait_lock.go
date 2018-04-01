@@ -4,22 +4,28 @@ import (
 	"time"
 	"sync"
 	"errors"
+	"math"
 )
 
 var Waitlock_Timeout = errors.New("waitlock timeout")
+var Waitlock_ExceedMaxWait = errors.New("waitlock exceed max wait count")
+
 
 type Waitlock struct {
-	mutex sync.Mutex
-	inUse bool
-	waitChan chan bool
-	WaitCount int32
+	mutex        sync.Mutex
+	inUse        bool
+	waitChan     chan bool
+	WaitCount    int32
+	MaxWaitCount int32
 }
 
 func NewWaitlock() *Waitlock {
+
 	return &Waitlock{
-		inUse:false,
-		waitChan: make(chan bool, 0),
-		WaitCount:0,
+		inUse:        false,
+		waitChan:     make(chan bool, 0),
+		WaitCount:    0,
+		MaxWaitCount: math.MaxInt32,
 	}
 }
 
@@ -34,6 +40,10 @@ func (waitLock *Waitlock) Lock(waitMs int) (int, error) {
 		waitLock.inUse = true
 		getLock = true
 	} else {
+		if waitLock.WaitCount >= waitLock.MaxWaitCount {
+			return -1, Waitlock_ExceedMaxWait
+		}
+
 		waitLock.WaitCount += 1
 	}
 	waitLock.mutex.Unlock()
@@ -45,10 +55,10 @@ func (waitLock *Waitlock) Lock(waitMs int) (int, error) {
 
 	timer := time.NewTimer(time.Duration(waitMs) * time.Millisecond)
 	select {
-	case <- timer.C:
+	case <-timer.C:
 		timeOut = true
 		break
-	case <- waitLock.waitChan:
+	case <-waitLock.waitChan:
 		break
 	}
 
@@ -75,7 +85,7 @@ func (waitLock *Waitlock) Unlock() {
 	timeOut := false
 	timer := time.NewTimer(time.Duration(1) * time.Millisecond)
 	select {
-	case <- timer.C:
+	case <-timer.C:
 		timeOut = true
 		break
 	case waitLock.waitChan <- true:

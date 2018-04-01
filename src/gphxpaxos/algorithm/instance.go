@@ -16,9 +16,7 @@ import (
 	"gphxpaxos/smbase"
 )
 
-const (
-	RETRY_QUEUE_MAX_LEN = 300
-)
+
 
 type CommitMsg struct {
 }
@@ -70,7 +68,7 @@ func NewInstance(cfg *config.Config, logstorage storage.LogStorage, transport ne
 
 	instance.acceptor = NewAcceptor(instance)
 	//Must init acceptor first, because the max instanceid is record in acceptor state.
-	err := instance.acceptor.Init() // TODO ???
+	err := instance.acceptor.Init()
 	if err != nil {
 		return nil, err
 	}
@@ -79,11 +77,12 @@ func NewInstance(cfg *config.Config, logstorage storage.LogStorage, transport ne
 	instance.ckMnger.Init()
 	cpInstanceId := instance.ckMnger.GetCheckpointInstanceID() + 1
 
-	log.Infof("acceptor OK, log.instanceid %d checkpoint.instanceid %d",
+	log.Infof("acceptor OK, log.instanceid %d,  checkpoint.instanceid %d",
 		instance.acceptor.GetInstanceId(), cpInstanceId)
 
 	nowInstanceId := cpInstanceId
 
+	// TODO nowInstanceId cpInstanceId maxInstanceId???
 	if nowInstanceId < instance.acceptor.GetInstanceId() {
 		err := instance.PlayLog(nowInstanceId, instance.acceptor.GetInstanceId())
 		if err != nil {
@@ -114,17 +113,15 @@ func NewInstance(cfg *config.Config, logstorage storage.LogStorage, transport ne
 	maxInstanceId, err := logstorage.GetMaxInstanceId(cfg.GetMyGroupId())
 	log.Debug("max instance id:%d:%v， propose id:%d", maxInstanceId, err, instance.proposer.GetInstanceId())
 
-	instance.ckMnger.SetMinChosenInstanceId(nowInstanceId)
+	instance.ckMnger.SetMaxChosenInstanceId(nowInstanceId)
 	err = instance.InitLastCheckSum()
 	if err != nil {
 		return nil, err
 	}
-	instance.learner.Reset_AskforLearn_Noop(config.GetAskforLearnInterval()) //GetAskforLearnInterval
 
-	instance.learner.Init()
-	instance.ckMnger.Start()
+	// 重置learner的定时器，定时器到时就会广播AskForLearn消息，以保证本节点能保持较新的状态
+	instance.learner.ResetAskforLearnNoop(config.GetAskforLearnInterval()) //GetAskforLearnInterval
 
-	util.StartRoutine(instance.main)
 
 	return instance, nil
 }
@@ -153,6 +150,16 @@ func (instance *Instance) main() {
 	}
 }
 
+// TODO
+func (instance *Instance) Start() {
+	instance.learner.Start()
+	instance.ckMnger.Start()
+
+	util.StartRoutine(instance.main)
+}
+
+
+
 func (instance *Instance) Stop() {
 	instance.end = true
 	instance.endChan <- true
@@ -178,7 +185,7 @@ func (instance *Instance) GetCheckpointCleaner() *checkpoint.Cleaner {
 }
 
 func (instance *Instance) GetCheckpointReplayer() *checkpoint.Replayer {
-	return instance.ckMnger.GetRelayer()
+	return instance.ckMnger.GetReplayer()
 }
 
 func (instance *Instance) InitLastCheckSum() error {
@@ -304,7 +311,7 @@ func (instance *Instance) onCommit() {
 		return
 	}
 
-	if !instance.learner.IsImLatest() {
+	if !instance.learner.IsImLatest() { // TODO ???
 		return
 	}
 
@@ -348,6 +355,7 @@ func (instance *Instance) GetInstanceValue(instanceId uint64) ([]byte, int32, er
 	return value, smid, nil
 }
 
+// TODO
 func (instance *Instance) isCheckSumValid(msg *comm.PaxosMsg) bool {
 	return true
 }
@@ -432,7 +440,7 @@ func (instance *Instance) receiveMsgForProposer(msg *comm.PaxosMsg) error {
 
 // handle msg type which for acceptor
 func (instance *Instance) receiveMsgForAcceptor(msg *comm.PaxosMsg, isRetry bool) error {
-	if instance.config.IsIMFollower() {
+	if instance.config.IsIMFollower() { // TODO follower ???
 		log.Errorf("[%s]follower skip %d msg", instance.name, msg.GetMsgType())
 		return nil
 	}
@@ -443,7 +451,7 @@ func (instance *Instance) receiveMsgForAcceptor(msg *comm.PaxosMsg, isRetry bool
 	log.Info("[%s]msg instance %d, acceptor instance %d", instance.name, msgInstanceId, acceptorInstanceId)
 	// msgInstanceId == acceptorInstanceId + 1  means acceptor instance has been approved
 	// so just learn it
-	if msgInstanceId == acceptorInstanceId+1 {
+	if msgInstanceId == acceptorInstanceId + 1 {
 		newMsg := &comm.PaxosMsg{}
 		util.CopyStruct(newMsg, *msg)
 		newMsg.InstanceID = proto.Uint64(acceptorInstanceId)
@@ -454,7 +462,8 @@ func (instance *Instance) receiveMsgForAcceptor(msg *comm.PaxosMsg, isRetry bool
 
 	msgType := msg.GetMsgType()
 
-	// msg instance == acceptorInstanceId means this msg is what acceptor processing
+	// msg instanceId == acceptorInstanceId 是当前正在投票处理的消息
+	// msg instanceId == acceptorInstanceId means this msg is what acceptor processing
 	// so call the acceptor function to handle it
 	if msgInstanceId == acceptorInstanceId {
 		if msgType == comm.MsgType_PaxosPrepare {
@@ -476,7 +485,8 @@ func (instance *Instance) receiveMsgForAcceptor(msg *comm.PaxosMsg, isRetry bool
 
 	// ignore expired msg
 	if msgInstanceId <= acceptorInstanceId {
-		log.Debug("[%s]ignore expired %d msg from %d, now %d", instance.name, msgInstanceId, msg.GetNodeID(), acceptorInstanceId)
+		log.Debug("[%s]ignore expired %d msg from %d, now %d", instance.name, msgInstanceId,
+			msg.GetNodeID(), acceptorInstanceId)
 		return nil
 	}
 
@@ -485,7 +495,8 @@ func (instance *Instance) receiveMsgForAcceptor(msg *comm.PaxosMsg, isRetry bool
 		return nil
 	}
 
-	if msgInstanceId < acceptorInstanceId+RETRY_QUEUE_MAX_LEN {
+	// 如果当前节点落后的消息数小于RETRY_QUEUE_MAX_LEN，在加入重试的队列 TODO ???
+	if msgInstanceId < acceptorInstanceId + RETRY_QUEUE_MAX_LEN {
 		//need retry msg precondition
 		//  1. prepare or accept msg
 		//  2. msg.instanceid > nowinstanceid.
@@ -505,12 +516,13 @@ func (instance *Instance) OnReceivePaxosMsg(msg *comm.PaxosMsg, isRetry bool) er
 	learner := instance.learner
 	msgType := msg.GetMsgType()
 
-	log.Info("[%s]instance id %d, msg instance id:%d, msgtype: %d, from: %d, my node id:%d, latest instanceid %d",
+	log.Infof("[%s]instance id %d, msg instance id:%d, msgtype: %d, from: %d, my node id:%d, latest instanceid %d",
 		instance.name, proposer.GetInstanceId(), msg.GetInstanceID(), msgType, msg.GetNodeID(),
 		instance.config.GetMyNodeId(), learner.getSeenLatestInstanceId())
 
 	// handle msg for acceptor
 	if msgType == comm.MsgType_PaxosPrepare || msgType == comm.MsgType_PaxosAccept {
+		// 如果不是配置文件中已经配置的节点，则增加一个临时节点
 		if !instance.config.IsValidNodeID(msg.GetNodeID()) {
 			instance.config.AddTmpNodeOnlyForLearn(msg.GetNodeID())
 			log.Errorf("[%s]is not valid node id", instance.name)
@@ -526,18 +538,18 @@ func (instance *Instance) OnReceivePaxosMsg(msg *comm.PaxosMsg, isRetry bool) er
 	}
 
 	// handle paxos prepare and accept reply msg
-	if (msgType == comm.MsgType_PaxosPrepareReply || msgType == comm.MsgType_PaxosAcceptReply) {
+	if msgType == comm.MsgType_PaxosPrepareReply || msgType == comm.MsgType_PaxosAcceptReply {
 		return instance.receiveMsgForProposer(msg)
 	}
 
 	// handler msg for learner
-	if (msgType == comm.MsgType_PaxosLearner_AskforLearn ||
+	if msgType == comm.MsgType_PaxosLearner_AskforLearn ||
 		msgType == comm.MsgType_PaxosLearner_SendLearnValue ||
 		msgType == comm.MsgType_PaxosLearner_ProposerSendSuccess ||
 		msgType == comm.MsgType_PaxosLearner_ConfirmAskforLearn ||
 		msgType == comm.MsgType_PaxosLearner_SendNowInstanceID ||
 		msgType == comm.MsgType_PaxosLearner_SendLearnValue_Ack ||
-		msgType == comm.MsgType_PaxosLearner_AskforCheckpoint) {
+		msgType == comm.MsgType_PaxosLearner_AskforCheckpoint {
 		if !instance.isCheckSumValid(msg) {
 			return comm.ErrInvalidMsg
 		}
@@ -561,7 +573,7 @@ func (instance *Instance) OnTimeout(timer *util.Timer) {
 	}
 
 	if timer.TimerType == LearnerTimer {
-		instance.learner.AskforLearn_Noop()
+		instance.learner.AskforLearnNoop()
 		return
 	}
 }

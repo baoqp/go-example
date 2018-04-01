@@ -1,6 +1,5 @@
 package algorithm
 
-
 import (
 	"gphxpaxos/config"
 	"io/ioutil"
@@ -92,7 +91,7 @@ func (checkpointReceiver *CheckpointReceiver) IsReceiverFinish(senderNodeId uint
 
 func (checkpointReceiver *CheckpointReceiver) GetTmpDirPath(smid int32) string {
 	logStoragePath, _ := checkpointReceiver.logStorage.GetLogStorageDirPath(checkpointReceiver.config.GetMyGroupId())
-	return fmt.Sprintf("$s/cp_tmp_%d", logStoragePath, smid)
+	return fmt.Sprintf("%s/cp_tmp_%d", logStoragePath, smid)
 }
 
 func (checkpointReceiver *CheckpointReceiver) InitFilePath(filePath string) (string, error) {
@@ -149,12 +148,14 @@ func (checkpointReceiver *CheckpointReceiver) ReceiveCheckpoint(ckMsg *comm.Chec
 	}
 
 	if ckMsg.GetSequence() == checkpointReceiver.sequence {
-		log.Error("msg already received, msg sequence %d receiver sequence %d", ckMsg.GetSequence(), checkpointReceiver.sequence)
+		log.Errorf("msg already received, msg sequence %d receiver sequence %d",
+			ckMsg.GetSequence(), checkpointReceiver.sequence)
 		return nil
 	}
 
-	if ckMsg.GetSequence() != checkpointReceiver.sequence+1 {
-		log.Error("msg sequence wrong, msg sequence %d receiver sequence %d", ckMsg.GetSequence(), checkpointReceiver.sequence)
+	if ckMsg.GetSequence() != checkpointReceiver.sequence + 1 {
+		log.Errorf("msg sequence wrong, msg sequence %d receiver sequence %d",
+			ckMsg.GetSequence(), checkpointReceiver.sequence)
 		return comm.ErrInvalidMsg
 	}
 
@@ -176,13 +177,13 @@ func (checkpointReceiver *CheckpointReceiver) ReceiveCheckpoint(ckMsg *comm.Chec
 	}
 
 	if uint64(offset) != ckMsg.GetOffset() {
-		log.Error("wrong msg, file offset %d msg offset %d", offset, ckMsg.GetOffset())
+		log.Errorf("wrong msg, file offset %d msg offset %d", offset, ckMsg.GetOffset())
 		return comm.ErrInvalidMsg
 	}
 
 	writeLen, err := file.Write(ckMsg.GetBuffer())
 	if err != nil || writeLen != len(ckMsg.GetBuffer()) {
-		log.Error("write fail, write len %d", writeLen)
+		log.Errorf("write fail, write len %d", writeLen)
 		return comm.ErrWriteFileFail
 	}
 

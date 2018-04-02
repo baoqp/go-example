@@ -123,7 +123,7 @@ func (timerThread *TimerThread) fireTimeout(timer *Timer) {
 
 	if ok {
 		log.Debug("fire timeout:%v, %d", timer.Obj, timer.TimerType)
-		timer.Obj.OnTimeout(timer) // TODO　需要在新的线程中么
+		timer.Obj.OnTimeout(timer) // TODO　需要在新的线程中么，如果在新线程中会有影响么???
 	}
 }
 

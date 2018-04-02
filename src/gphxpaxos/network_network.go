@@ -13,7 +13,7 @@ type NetWork interface {
 
 	RunNetWork() error
 
-	StopNetWor() error
+	StopNetWork() error
 
 	SendMessageTCP(groupIdx int32, ip string, port int, message []byte) error
 

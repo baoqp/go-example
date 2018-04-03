@@ -12,7 +12,7 @@ func TestNodeInfo(t *testing.T) {
 	Port: 8080,
 	}
 
-	makeNodeId(nodeInfo)
+	MakeNodeId(nodeInfo)
 
 	fmt.Println(nodeInfo.NodeId)
 

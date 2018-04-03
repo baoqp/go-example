@@ -3,6 +3,8 @@ package gphxpaxos
 import (
 	"fmt"
 	"gphxpaxos/util"
+	"strings"
+	"strconv"
 )
 
 type NodeInfoList []*NodeInfo
@@ -17,16 +19,22 @@ func (nodeInfo *NodeInfo) String() string {
 	return fmt.Sprintf("%s:%d", nodeInfo.Ip, nodeInfo.Port)
 }
 
-
-
-
-func makeNodeId(nodeInfo *NodeInfo) {
+func MakeNodeId(nodeInfo *NodeInfo) {
 	ip := util.Inet_addr(nodeInfo.Ip)
 	// 高32位是ip, 低32位是port
 	nodeInfo.NodeId = uint64(ip)<<32 | uint64(nodeInfo.Port)
 }
 
-func (nodeInfo *NodeInfo) ParseNodeId()  {
+func FromString(pcStr string) *NodeInfo {
+	nodeInfo := &NodeInfo{}
+	pcArr := strings.Split(pcStr, ":")
+	nodeInfo.Ip = pcArr[0]
+	nodeInfo.Port, _ = strconv.Atoi(pcArr[1])
+	MakeNodeId(nodeInfo)
+	return nodeInfo
+}
+
+func (nodeInfo *NodeInfo) ParseNodeId() {
 	nodeInfo.Port = int(nodeInfo.NodeId & (0xffffffff))
 	ip := uint32(nodeInfo.NodeId >> 32)
 	nodeInfo.Ip = inet_ntoa(ip)
@@ -36,7 +44,7 @@ func inet_ntoa(ip uint32) string {
 	return fmt.Sprintf("%d.%d.%d.%d", byte(ip), byte(ip>>8), byte(ip>>16), byte(ip>>24))
 }
 
-func NewNodeInfoWithId(nodeId uint64) *NodeInfo{
+func NewNodeInfoWithId(nodeId uint64) *NodeInfo {
 	nodeInfo := &NodeInfo{NodeId: nodeId}
 	nodeInfo.ParseNodeId()
 	return nodeInfo
@@ -47,7 +55,7 @@ func NewNodeInfo(ip string, port int) *NodeInfo {
 		Ip:   ip,
 		Port: port,
 	}
-	makeNodeId(nodeInfo)
+	MakeNodeId(nodeInfo)
 	return nodeInfo
 }
 
@@ -79,7 +87,7 @@ type Options struct {
 	NetWork                      NetWork
 	GroupCount                   int
 	UseMemebership               bool
-	MyNodeInfo                   *NodeInfo
+	MyNodeInfo                   NodeInfo
 	NodeInfoList                 NodeInfoList
 	MembershipChangeCallback     MembershipChangeCallback
 	MasterChangeCallback         MasterChangeCallback
@@ -88,4 +96,5 @@ type Options struct {
 	UseCheckpointReplayer        bool
 	UseBatchPropose              bool
 	OpenChangeValueBeforePropose bool
+	IsLargeValueMode             bool
 }

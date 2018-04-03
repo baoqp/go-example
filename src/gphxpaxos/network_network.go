@@ -20,6 +20,8 @@ type NetWork interface {
 	SendMessageUDP(groupIdx int32, ip string, port int, message []byte) error
 
 	OnReceiveMessage(message []byte, messageLen int) error
+
+	SetNode(node *Node)
 }
 
 type MsgTransport interface {

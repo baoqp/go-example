@@ -5,10 +5,9 @@ import (
 	"sync"
 	"time"
 	"container/list"
-	"fmt"
 )
 
-// TODO startChan的作用??? 检查goroutine启动成功
+// TODO startChan的作用???
 func StartRoutine(f func()) {
 	startChan := make(chan bool)
 	go func() {
@@ -17,7 +16,7 @@ func StartRoutine(f func()) {
 	}()
 
 	<-startChan
-	fmt.Println("start Routine done ")
+	log.Info("start Routine done ")
 }
 
 type TimerThread struct {

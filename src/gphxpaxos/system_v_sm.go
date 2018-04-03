@@ -28,8 +28,8 @@ func NewSystemVSM(groupId int32, myNodeId uint64, logstorage LogStorage,
 }
 
 func (systemVSM *SystemVSM) Init() error {
-	var variable = &SystemVariables{}
-	err := systemVSM.systemStore.Read(systemVSM.myGroupId, variable)
+	systemVSM.systemVariables =  &SystemVariables{}
+	err := systemVSM.systemStore.Read(systemVSM.myGroupId, systemVSM.systemVariables)
 	if err != nil && err != ErrKeyNotFound {
 		return err
 	} else if err != nil && err == ErrKeyNotFound {

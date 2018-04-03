@@ -14,17 +14,34 @@ type Node struct {
 	ProposeBatchList []*ProposeBatch
 
 	defaultLogStorage *MultiDatabase
-	defaultNewWotk    NetWork
+	defaultNetWork    NetWork
 	myNodeId          uint64
 }
 
 var LOGPATHERR = errors.New("LogStorage Path is null")
+
+func (node *Node) RunNode(options *Options)  error {
+
+	if options.IsLargeValueMode {
+		SetAsLargeBufferMode()
+	}
+	SetGroupCount(options.GroupCount)
+	network, err := node.Init(options)
+	if err != nil {
+		return err
+	}
+
+	network.SetNode(node)
+	network.RunNetWork()
+	return  nil
+}
 
 func (node *Node) InitLogStorage(options *Options) (LogStorage, error) {
 	if len(options.LogStoragePath) == 0 {
 		return nil, LOGPATHERR
 	}
 
+	node.defaultLogStorage = &MultiDatabase{}
 	err := node.defaultLogStorage.Init(options.LogStoragePath, options.GroupCount)
 
 	if err != nil {
@@ -34,9 +51,23 @@ func (node *Node) InitLogStorage(options *Options) (LogStorage, error) {
 	return node.defaultLogStorage, nil
 }
 
-// TODO
 func (node *Node) InitNetWork(options *Options) (NetWork, error) {
-	return nil, nil
+	if options.NetWork != nil {
+		return options.NetWork, nil
+	}
+
+	dfNet := NewDefaultNetWork(options.MyNodeInfo.Ip, options.MyNodeInfo.Port)
+	err := dfNet.Init()
+
+	if err != nil {
+		log.Errorf("init default network fail, ret %v", err)
+		return nil, err
+	}
+	node.defaultNetWork = dfNet
+	log.Info("use default network")
+
+	return dfNet, nil
+
 }
 
 // 检查options设置是否合理
@@ -95,10 +126,10 @@ func (node *Node) RunProposalBatch() {
 	}
 }
 
-func (node *Node) Init(options *Options) error {
+func (node *Node) Init(options *Options) (NetWork, error) {
 	err := node.CheckOptions(options)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	node.myNodeId = options.MyNodeInfo.NodeId
@@ -106,13 +137,14 @@ func (node *Node) Init(options *Options) error {
 	//step1 init logstorage
 	logStorage, err := node.InitLogStorage(options)
 	if err != nil {
-		return err
+		return nil,err
 	}
+	options.LogStorage = logStorage
 
 	//step2 init network
 	network, err := node.InitNetWork(options)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	//step3 build masterlist
@@ -122,7 +154,7 @@ func (node *Node) Init(options *Options) error {
 
 		err := masterMgr.Init()
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -155,7 +187,7 @@ func (node *Node) Init(options *Options) error {
 	node.RunMaster(options)
 	node.RunProposeBatch()
 
-	return nil
+	return network, nil
 
 }
 
@@ -185,6 +217,9 @@ func (node *Node) ProposeWithCtx(groupIdx int32, value []byte, instanceId *uint6
 
 	var err error
 	*instanceId, err = node.GroupList[int(groupIdx)].GetCommitter().NewValueGetID(value, smCtx)
+	if err == PaxosTryCommitRet_OK {
+		return nil
+	}
 	return err
 
 }

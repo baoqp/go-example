@@ -28,6 +28,7 @@ type Config struct {
 
 func NewConfig(options *Options, groupId int32) *Config {
 	return &Config{
+		MyNodeId: options.MyNodeInfo.NodeId,
 		Options:   options,
 		MyGroupId: groupId,
 		MajorCnt:  int(math.Floor(float64(len(options.NodeInfoList))/2)) + 1,
@@ -35,6 +36,8 @@ func NewConfig(options *Options, groupId int32) *Config {
 }
 
 func (config *Config) Init() error {
+	config.SystemVSM = NewSystemVSM(config.MyGroupId, config.MyNodeId, config.LogStorage,
+		config.MembershipChangeCallback)
 	err := config.SystemVSM.Init()
 	if err != nil {
 		return err

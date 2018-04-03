@@ -172,7 +172,7 @@ func (base *Base) packBaseMsg(body []byte, cmd int32) (buffer []byte, header *He
 	return
 }
 
-// TODO to be checked
+
 func UnpackBaseMsg(buffer []byte, header *Header) (body []byte, err error) {
 
 	headStartPos := GROUPIDXLEN + HEADLEN_LEN

@@ -8,6 +8,8 @@ import (
 )
 
 //---------------------------------------CommitContext--------------------------------------------//
+const DEFAULT_TIMEOUT_MS = 20000
+
 type CommitContext struct {
 	instanceId          uint64
 	commitEnd           bool
@@ -50,6 +52,7 @@ func (commitContext *CommitContext) newCommit(value []byte, timeoutMs uint32, co
 	commitContext.end = 0
 	commitContext.start = util.NowTimeMs()
 	commitContext.timeoutMs = timeoutMs
+
 }
 
 func (commitContext *CommitContext) isNewCommit() bool {
@@ -141,7 +144,7 @@ func (commitContext *CommitContext) getResult() (uint64, error) {
 	}
 
 	if commitContext.commitRet == PaxosTryCommitRet_OK {
-		return commitContext.instanceId, commitContext.commitRet
+		return commitContext.instanceId, PaxosTryCommitRet_OK
 	}
 
 	return 0, commitContext.commitRet
@@ -172,6 +175,7 @@ func newCommitter(instance *Instance) *Committer {
 		commitCtx: instance.commitctx,
 		factory:   instance.factory,
 		instance:  instance,
+		timeoutMs: DEFAULT_TIMEOUT_MS,
 	}
 }
 func (committer *Committer) SetMaxHoldThreads(maxHoldThreads int32) {
@@ -190,9 +194,8 @@ func (committer *Committer) NewValue(value []byte) (uint64, error) {
 func (committer *Committer) NewValueGetID(value []byte, context *SMCtx) (uint64, error) {
 	err := PaxosTryCommitRet_OK
 	var instanceid uint64
-	for i := 0; i < MaxTryCount && committer.timeoutMs > 0; i++ {
+	for i := 0; i < MaxTryCount; i++ {
 		instanceid, err = committer.newValueGetIDNoRetry(value, context)
-
 		if err != PaxosTryCommitRet_Conflict && err != PaxosTryCommitRet_WaitTimeout {
 			break
 		}
@@ -213,7 +216,7 @@ func (committer *Committer) newValueGetIDNoRetry(value []byte, context *SMCtx) (
 		return 0, PaxosTryCommitRet_WaitTimeout
 	}
 
-	if committer.timeoutMs <= uint32(200 + lockUseTime) {
+	if committer.timeoutMs <= uint32(200+lockUseTime) {
 		committer.waitLock.Unlock()
 		committer.timeoutMs = 0
 		return 0, PaxosTryCommitRet_Timeout
@@ -226,7 +229,7 @@ func (committer *Committer) newValueGetIDNoRetry(value []byte, context *SMCtx) (
 		smid = context.SMID
 	}
 
-	packValue := committer.factory.PackPaxosValue(value,  smid)
+	packValue := committer.factory.PackPaxosValue(value, smid)
 	committer.commitCtx.newCommit(packValue, leftTimeoutMs, context)
 	committer.instance.sendCommitMsg()
 

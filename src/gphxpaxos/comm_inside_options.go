@@ -5,7 +5,6 @@ import (
 	"gphxpaxos/util"
 )
 
-// TODO 各种Get方法部分参数的设置理由
 type InsideOptions struct {
 	isLargeBufferMode bool
 	isIMFollower      bool

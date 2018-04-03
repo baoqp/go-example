@@ -219,7 +219,7 @@ func (learner *Learner) OnAskforLearn(msg *PaxosMsg) {
 	learner.SetSeenInstanceID(msg.GetInstanceID(), msg.GetNodeID())
 
 	if msg.GetProposalNodeID() == learner.config.GetMyNodeId() {
-		log.Info("found a node %d follow me", msg.GetNodeID())
+		log.Infof("found a node %d follow me", msg.GetNodeID())
 		learner.config.AddFollowerNode(msg.GetNodeID())
 	}
 

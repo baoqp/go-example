@@ -93,14 +93,14 @@ func (cleaner *Cleaner) main() {
 		}
 
 		if cpInstanceId == 0 {
-			log.Info("sleep a while, max deleted instanceid %d checkpoint instanceid(no checkpoint) now instance id %d",
+			log.Infof("sleep a while, max deleted instanceid %d checkpoint instanceid(no checkpoint) now instance id %d",
 				instanceId, cleaner.ckmnger.GetMaxChosenInstanceID())
 		} else {
-			log.Info("sleep a while, max deleted instanceid %d checkpoint instanceid %d now instance id %d",
+			log.Infof("sleep a while, max deleted instanceid %d checkpoint instanceid %d now instance id %d",
 				instanceId, cpInstanceId, cleaner.ckmnger.GetMaxChosenInstanceID())
 		}
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(5000 * time.Millisecond)
 	}
 }
 

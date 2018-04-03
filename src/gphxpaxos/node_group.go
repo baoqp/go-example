@@ -19,6 +19,10 @@ func NewGroup(logstorage LogStorage, network NetWork, masterSM *MasterStateMachi
 	return group
 }
 
+func (group *Group) GetInstacne() *Instance {
+	return group.instance
+}
+
 func (group *Group) StartInit() error {
 	err := group.config.Init()
 	if err != nil {

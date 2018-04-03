@@ -72,6 +72,14 @@ func NewInstance(cfg *Config, logstorage LogStorage, transport MsgTransport,
 	return instance
 }
 
+func (instance *Instance) getProposer() *Proposer {
+	return instance.proposer
+}
+func (instance *Instance) getAcceptor() *Acceptor {
+	return instance.acceptor
+}
+
+
 func (instance *Instance) Init() error {
 	//Must init acceptor first, because the max instanceid is record in acceptor state.
 	err := instance.acceptor.Init()
@@ -101,7 +109,7 @@ func (instance *Instance) Init() error {
 		instance.acceptor.setInstanceId(nowInstanceId)
 	}
 
-	log.Info("now instance id: %d", nowInstanceId)
+	log.Infof("now instance id: %d", nowInstanceId)
 
 	instance.learner.setInstanceId(nowInstanceId)
 	instance.proposer.setInstanceId(nowInstanceId)
@@ -122,6 +130,7 @@ func (instance *Instance) Init() error {
 
 // instance main loop
 func (instance *Instance) main() {
+
 	end := false
 	for !end {
 		timer := time.NewTimer(100 * time.Millisecond)
@@ -148,7 +157,6 @@ func (instance *Instance) main() {
 func (instance *Instance) Start() {
 	instance.learner.Start()
 	instance.ckMnger.Start()
-
 	util.StartRoutine(instance.main)
 }
 
@@ -200,13 +208,13 @@ func (instance *Instance) InitLastCheckSum() error {
 	}
 
 	if err == ErrKeyNotFound {
-		log.Errorf("last checksum not exist, now instance id %d", instance.acceptor.GetInstanceId())
+		log.Warnf("last checksum not exist, now instance id %d", instance.acceptor.GetInstanceId())
 		instance.lastChecksum = 0
 		return nil
 	}
 
 	instance.lastChecksum = state.GetChecksum()
-	log.Info("OK, last checksum %d", instance.lastChecksum)
+	log.Infof("OK, last checksum %d", instance.lastChecksum)
 
 	return nil
 }
@@ -299,11 +307,12 @@ func (instance *Instance) sendCommitMsg() {
 
 // handle commit message
 func (instance *Instance) onCommit() {
+
 	if !instance.commitctx.isNewCommit() {
 		return
 	}
 
-	if !instance.learner.IsImLatest() { // TODO ???
+	if !instance.learner.IsImLatest() {
 		return
 	}
 
@@ -358,8 +367,9 @@ func (instance *Instance) NewInstance(isMyCommit bool) {
 	instance.learner.NewInstance(isMyCommit)
 }
 
+// TODO
 func (instance *Instance) receiveMsgForLearner(msg *PaxosMsg) error {
-	log.Info("[%s]recv msg %d for learner", instance.name, msg.GetMsgType())
+	log.Infof("[%s]recv msg %d for learner", instance.name, msg.GetMsgType())
 	learner := instance.learner
 	msgType := msg.GetMsgType()
 
@@ -399,7 +409,7 @@ func (instance *Instance) receiveMsgForLearner(msg *PaxosMsg) error {
 
 		instance.NewInstance(isMyCommit)
 
-		log.Info("[%s]new paxos instance has started, Now instance id:proposer %d, acceptor %d, learner %d",
+		log.Infof("[%s]new paxos instance has started, Now instance id:proposer %d, acceptor %d, learner %d",
 			instance.name, instance.proposer.GetInstanceId(), instance.acceptor.GetInstanceId(), instance.learner.GetInstanceId())
 	}
 	return nil
@@ -440,10 +450,10 @@ func (instance *Instance) receiveMsgForAcceptor(msg *PaxosMsg, isRetry bool) err
 	msgInstanceId := msg.GetInstanceID()
 	acceptorInstanceId := instance.acceptor.GetInstanceId()
 
-	log.Info("[%s]msg instance %d, acceptor instance %d", instance.name, msgInstanceId, acceptorInstanceId)
+	log.Infof("[%s]msg instance %d, acceptor instance %d", instance.name, msgInstanceId, acceptorInstanceId)
 	// msgInstanceId == acceptorInstanceId + 1  means acceptor instance has been approved
 	// so just learn it
-	if msgInstanceId == acceptorInstanceId+1 {
+	if msgInstanceId == acceptorInstanceId + 1 {
 		newMsg := &PaxosMsg{}
 		util.CopyStruct(newMsg, *msg)
 		newMsg.InstanceID = proto.Uint64(acceptorInstanceId)

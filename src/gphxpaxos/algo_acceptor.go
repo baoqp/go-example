@@ -116,7 +116,7 @@ func (acceptorState *AcceptorState) Load() (uint64, error) {
 	instanceid, err := acceptorState.paxosLog.GetMaxInstanceIdFromLog(myGroupId)
 
 	if err != nil && err != ErrKeyNotFound {
-		log.Infof("Load max instance id fail:%v", err)
+		log.Errorf("Load max instance id fail:%v", err)
 		return INVALID_INSTANCEID, err
 	}
 
@@ -198,8 +198,10 @@ func (acceptor *Acceptor) GetAcceptorState() *AcceptorState {
 
 // handle paxos prepare msg 处理prepare msg
 func (acceptor *Acceptor) onPrepare(msg *PaxosMsg) error {
-	log.Infof("[%s]start prepare msg instanceid %d, from %d, proposalid %d",
-		acceptor.instance.String(), msg.GetInstanceID(), msg.GetNodeID(), msg.GetProposalID())
+
+
+	log.Infof("[%s]start prepare msg instanceId %d, from %d, proposalId %d, value_len %d",
+		acceptor.instance.String(), msg.GetInstanceID(), msg.GetNodeID(), msg.GetProposalID(), len(msg.GetValue()))
 
 	reply := &PaxosMsg{
 		InstanceID: proto.Uint64(acceptor.GetInstanceId()),
@@ -221,7 +223,8 @@ func (acceptor *Acceptor) onPrepare(msg *PaxosMsg) error {
 	//else
 	//  reject
 	if ballot.GT(state.GetPromiseNum()) {
-		log.Debug("[%s][promise]promiseid %d, promisenodeid %d, preacceptedid %d, preacceptednodeid %d",
+		log.Infof("[onPrepare Pass] req ballot %s promise bollot %s", ballot.String(), state.GetPromiseNum().String())
+		log.Debugf("[%s][promise]promiseId %d, promiseNodeDd %d, preAcceptedId %d, preAcceptedNodeDd %d",
 			acceptor.instance.String(), state.GetPromiseNum().proposalId, state.GetPromiseNum().nodeId,
 			state.GetAcceptedNum().proposalId, state.GetAcceptedNum().nodeId)
 
@@ -241,7 +244,8 @@ func (acceptor *Acceptor) onPrepare(msg *PaxosMsg) error {
 			return err
 		}
 	} else {
-		log.Debug("[reject]promiseid %d, promisenodeid %d",
+		log.Infof("[onPrepare reject] req ballot %s promise bollot %s ", ballot.String(), state.GetPromiseNum().String())
+		log.Debugf("[reject]promiseid %d, promisenodeid %d",
 			state.GetPromiseNum().proposalId, state.GetPromiseNum().nodeId)
 
 		reply.RejectByPromiseID = proto.Uint64(state.GetPromiseNum().proposalId)
@@ -257,8 +261,8 @@ func (acceptor *Acceptor) onPrepare(msg *PaxosMsg) error {
 
 // handle paxos accept msg
 func (acceptor *Acceptor) onAccept(msg *PaxosMsg) error {
-	log.Infof("[%s]start accept msg instanceid %d, from %d, proposalid %d, valuelen %d",
-		acceptor.instance.String(), msg.GetInstanceID(), msg.GetNodeID(), msg.GetProposalID(), len(msg.Value))
+	log.Infof("[%s]start accept msg instanceId %d, from %d, proposalId %d, value_len %d",
+		acceptor.instance.String(), msg.GetInstanceID(), msg.GetNodeID(), msg.GetProposalID(), len(msg.GetValue()))
 
 	reply := &PaxosMsg{
 		InstanceID: proto.Uint64(acceptor.GetInstanceId()),

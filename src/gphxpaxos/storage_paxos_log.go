@@ -45,7 +45,6 @@ func (paxosLog *PaxosLog) ReadLog(groupIdx int32, instanceId uint64) ([]byte, er
 func (paxosLog *PaxosLog) GetMaxInstanceIdFromLog(groupIdx int32) (uint64, error) {
 	instanceId, err := paxosLog.logStorage.GetMaxInstanceId(groupIdx)
 	if err != nil {
-		log.Errorf("db.getmax fail, error:%v", err)
 		return INVALID_INSTANCEID, err
 	}
 
@@ -69,17 +68,17 @@ func (paxosLog *PaxosLog) WriteState(options *WriteOptions, groupIdx int32, inst
 	return nil
 }
 
-func (paxosLog *PaxosLog) ReadState(groupIdx int32, instanceId uint64, state *AcceptorStateData) (error) {
+func (paxosLog *PaxosLog) ReadState(groupIdx int32, instanceId uint64, state *AcceptorStateData) error {
 	value, err := paxosLog.logStorage.Get(groupIdx, instanceId)
 
 	if err != nil {
-	}
-	err = proto.Unmarshal(value, state)
-
-	if err != nil {
-		log.Errorf("Read State error caused by unmarshal error ")
 		return err
 	}
 
+	err = proto.Unmarshal(value, state)
+	if err != nil {
+		log.Errorf("Read State error caused by unmarshal error %v", err)
+		return err
+	}
 	return nil
 }

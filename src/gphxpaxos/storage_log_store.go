@@ -152,7 +152,6 @@ func (logStore *LogStore) Append(options *WriteOptions, instanceId uint64, buffe
 	}
 
 	if options.Sync {
-		// TODO
 		// 在windows下sync只把数据写入磁盘，不写元数据，由于我们这里使用了固定大小的元素，所以不需要写入元数据
 		// 如果要同时写入数据和元数据使用 syscall.FlushFileBuffers()
 		// 在Linux中Sync是同时写入数据和元数据，fdatasync只写入数据

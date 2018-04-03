@@ -82,7 +82,7 @@ func (database *Database) Init(dbPath string, myGroupIdx int) error {
 	}
 	database.hasInit = true
 
-	log.Info("db init OK, db path:%s", dbPath)
+	log.Infof("db init OK, db path:%s", dbPath)
 
 	return nil
 }
@@ -355,7 +355,7 @@ func (database *Database) GetMinChoseninstanceId() (uint64, error) {
 	}
 
 	if err == ErrKeyNotFound {
-		log.Errorf("no min chosen instanceId")
+		log.Warnf("no min chosen instanceId")
 		return 0, nil
 	}
 

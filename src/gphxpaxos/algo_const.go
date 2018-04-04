@@ -18,11 +18,6 @@ const (
 )
 
 
-const (
-	PrepareTimer = iota
-	AcceptTimer
-	LearnerTimer
-)
 
 // instance id status
 type Status int

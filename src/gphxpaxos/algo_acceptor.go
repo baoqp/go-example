@@ -36,6 +36,8 @@ func (acceptorState *AcceptorState) init() {
 	acceptorState.acceptValues = []byte("")
 }
 
+
+
 func (acceptorState *AcceptorState) GetPromiseNum() *BallotNumber {
 	return acceptorState.promiseNum
 }

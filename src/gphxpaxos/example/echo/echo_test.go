@@ -5,6 +5,7 @@ import (
 	"strings"
 	"gphxpaxos"
 	"fmt"
+	"gphxpaxos/util"
 )
 
 func parseNode(nodeInfoStr string) (*gphxpaxos.NodeInfo, *gphxpaxos.NodeInfoList) {
@@ -38,17 +39,19 @@ func echo1() {
 	if err != nil {
 		fmt.Printf("run paxos failed, %v", err)
 	} else {
+		for i:=1; i<=5; i++ {
+			reqStr := fmt.Sprintf("#%d req from %d", i, myNode.Port)
+			respStr, err := echoServer.Echo(reqStr)
+			if err != nil {
+				fmt.Printf("Echo fail, ret %v \r\n", err)
 
-		reqStr := fmt.Sprintf("req from %d", myNode.Port)
-		respStr, err := echoServer.Echo(reqStr)
-		if err != nil {
-			fmt.Printf("Echo fail, ret %v \r\n", err)
+			} else {
+				fmt.Printf("Echo resp value %s \r\n", respStr)
 
-		} else {
-			fmt.Printf("Echo resp value %s \r\n", respStr)
-
+			}
+			util.SleepMs(uint64(1000 + util.Rand(5000)))
 		}
-		select {}
+		select{}
 	}
 
 }

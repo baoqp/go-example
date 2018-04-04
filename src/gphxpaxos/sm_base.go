@@ -224,7 +224,6 @@ func (smFac *SMFac) UnpackPaxosValue(value []byte) ([]byte, int32) {
 func (smFac *SMFac) PackPaxosValue(value []byte, smid int32) []byte {
 	buf := make([] byte, INT32SIZE)
 	util.EncodeInt32(buf, 0, smid)
-
 	return util.AppendBytes(buf, value)
 }
 

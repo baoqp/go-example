@@ -15,7 +15,7 @@ type CommitMsg struct {
 
 type Instance struct {
 	config     *Config
-	logStorage  LogStorage
+	logStorage LogStorage
 	paxosLog   *PaxosLog
 	committer  *Committer
 	commitctx  *CommitContext
@@ -32,8 +32,9 @@ type Instance struct {
 	endChan chan bool
 	end     bool
 
-	commitChan   chan CommitMsg
-	paxosMsgChan chan *PaxosMsg
+	commitChan    chan CommitMsg
+	paxosMsgChan  chan *PaxosMsg
+	commitTimerId uint32
 
 	retryMsgList *list.List
 
@@ -78,7 +79,6 @@ func (instance *Instance) getProposer() *Proposer {
 func (instance *Instance) getAcceptor() *Acceptor {
 	return instance.acceptor
 }
-
 
 func (instance *Instance) Init() error {
 	//Must init acceptor first, because the max instanceid is record in acceptor state.
@@ -306,7 +306,7 @@ func (instance *Instance) sendCommitMsg() {
 }
 
 // handle commit message
-func (instance *Instance) onCommit() {
+func (instance *Instance) onCommit() { //  gphxpaxos instance.cpp CheckNewValue
 
 	if !instance.commitctx.isNewCommit() {
 		return
@@ -330,8 +330,36 @@ func (instance *Instance) onCommit() {
 
 	timeOutMs := instance.commitctx.StartCommit(instance.proposer.GetInstanceId())
 
-	log.Debug("[%s]start commit instance %d, timeout:%d", instance.String(), instance.proposer.GetInstanceId(), timeOutMs)
-	instance.proposer.NewValue(instance.commitctx.getCommitValue(), timeOutMs)
+	if timeOutMs > 0 {
+		instance.commitTimerId = instance.timerThread.AddTimer(timeOutMs, Timer_Instance_Commit_Timeout, instance)
+	}
+
+	if instance.config.GetIsUseMembership() &&
+		(instance.proposer.GetInstanceId() == 0 || instance.config.GetGid() == 0) {
+
+		log.Infof("Need to init system variables, Now.InstanceID %d Now.Gid %d",
+			instance.proposer.GetInstanceId(), instance.config.GetGid())
+
+		gid := util.GenGid(instance.config.MyNodeId)
+		initSVOpValue, err := instance.config.GetSystemVSM().CreateGid_OPValue(gid)
+
+		if err != nil {
+			log.Errorf("instance on Commit CreateGid_OPValue failed, %v", err)
+			return
+		}
+
+		value := instance.factory.PackPaxosValue(initSVOpValue, instance.config.GetSystemVSM().SMID())
+		instance.proposer.NewValue(value)
+
+	} else {
+		log.Debug("[%s]start commit instance %d, timeout:%d", instance.String(), instance.proposer.GetInstanceId(), timeOutMs)
+
+		if instance.config.OpenChangeValueBeforePropose {
+			instance.factory.BeforePropose(instance.groupId(), instance.commitctx.getCommitValue())
+		}
+
+		instance.proposer.NewValue(instance.commitctx.getCommitValue())
+	}
 }
 
 func (instance *Instance) String() string {
@@ -367,7 +395,6 @@ func (instance *Instance) NewInstance(isMyCommit bool) {
 	instance.learner.NewInstance(isMyCommit)
 }
 
-// TODO
 func (instance *Instance) receiveMsgForLearner(msg *PaxosMsg) error {
 	log.Infof("[%s]recv msg %d for learner", instance.name, msg.GetMsgType())
 	learner := instance.learner
@@ -398,19 +425,31 @@ func (instance *Instance) receiveMsgForLearner(msg *PaxosMsg) error {
 	}
 	if learner.IsLearned() {
 		commitCtx := instance.commitctx
-		isMyCommit, _ := commitCtx.IsMyCommit(msg.GetNodeID(), learner.GetInstanceId(), learner.GetLearnValue())
+		isMyCommit, smCtx := commitCtx.IsMyCommit(msg.GetNodeID(), learner.GetInstanceId(), learner.GetLearnValue())
 		if isMyCommit {
 			log.Debug("[%s]instance %d is my commit", instance.name, learner.GetInstanceId())
 		} else {
 			log.Debug("[%s]instance %d is not my commit", instance.name, learner.GetInstanceId())
 		}
 
-		commitCtx.setResult(PaxosTryCommitRet_OK, learner.GetInstanceId(), learner.GetLearnValue())
+		err := instance.SMExecute(learner.GetInstanceId(), learner.GetLearnValue(), isMyCommit, smCtx)
+		if err != nil {
+			log.Errorf("SMExecute fail, instanceId %d, not increase instanceId", learner.GetInstanceId())
 
+			commitCtx.setResult(PaxosTryCommitRet_ExecuteFail, learner.GetInstanceId(), learner.GetLearnValue())
+			instance.proposer.CancelSkipPrepare()
+
+			return err
+		}
+
+		commitCtx.setResult(PaxosTryCommitRet_OK, learner.GetInstanceId(), learner.GetLearnValue())
+		instance.lastChecksum = instance.learner.GetNewChecksum()
 		instance.NewInstance(isMyCommit)
 
 		log.Infof("[%s]new paxos instance has started, Now instance id:proposer %d, acceptor %d, learner %d",
 			instance.name, instance.proposer.GetInstanceId(), instance.acceptor.GetInstanceId(), instance.learner.GetInstanceId())
+
+		instance.ckMnger.SetMaxChosenInstanceId(instance.acceptor.GetInstanceId())
 	}
 	return nil
 }
@@ -453,7 +492,7 @@ func (instance *Instance) receiveMsgForAcceptor(msg *PaxosMsg, isRetry bool) err
 	log.Infof("[%s]msg instance %d, acceptor instance %d", instance.name, msgInstanceId, acceptorInstanceId)
 	// msgInstanceId == acceptorInstanceId + 1  means acceptor instance has been approved
 	// so just learn it
-	if msgInstanceId == acceptorInstanceId + 1 {
+	if msgInstanceId == acceptorInstanceId+1 {
 		newMsg := &PaxosMsg{}
 		util.CopyStruct(newMsg, *msg)
 		newMsg.InstanceID = proto.Uint64(acceptorInstanceId)
@@ -586,20 +625,32 @@ func (instance *Instance) OnReceiveCheckpointMsg(checkpointMsg *CheckpointMsg) {
 }
 
 func (instance *Instance) OnTimeout(timer *util.Timer) {
-	if timer.TimerType == PrepareTimer {
+	if timer.TimerType == Timer_Proposer_Prepare_Timeout {
 		instance.proposer.onPrepareTimeout()
 		return
 	}
 
-	if timer.TimerType == AcceptTimer {
+	if timer.TimerType == Timer_Proposer_Accept_Timeout {
 		instance.proposer.onAcceptTimeout()
 		return
 	}
 
-	if timer.TimerType == LearnerTimer {
+	if timer.TimerType == Timer_Learner_Askforlearn_noop {
 		instance.learner.AskforLearnNoop()
 		return
 	}
+
+	if timer.TimerType == Timer_Instance_Commit_Timeout {
+		instance.OnNewValueCommitTimeout()
+		return
+	}
+
+}
+
+func (instance *Instance) OnNewValueCommitTimeout() {
+	instance.proposer.exitPrepare()
+	instance.proposer.exitAccept()
+	instance.commitctx.setResult(PaxosTryCommitRet_Timeout, instance.proposer.GetInstanceId(), nil)
 }
 
 func (instance *Instance) OnReceiveMsg(buffer []byte, messageLen int) error {
@@ -650,8 +701,21 @@ func (instance *Instance) OnReceiveMsg(buffer []byte, messageLen int) error {
 	return nil
 }
 
-// TODO
 func (instance *Instance) ReceiveMsgHeaderCheck(header *Header, fromNodeId uint64) bool {
+
+	if instance.config.GetGid() == 0 ||
+		header.GetGid() == 0 {
+		return true
+	}
+
+	if instance.config.GetGid() != header.GetGid() {
+
+		log.Errorf("Header check fail, header.gid %d config.gid %d, msg.from_nodeid %d",
+			header.GetGid(), instance.config.GetGid(), fromNodeId)
+
+		return false
+	}
+
 	return true
 }
 

@@ -125,7 +125,6 @@ type Proposer struct {
 	canSkipPrepare       bool
 	wasRejectBySomeone   bool
 	timerThread          *util.TimerThread
-	timeOutMs            uint32
 	lastStartTimeMs      uint64
 }
 
@@ -140,14 +139,14 @@ func NewProposer(instance *Instance) *Proposer {
 	}
 
 	proposer.InitForNewPaxosInstance(false)
+	proposer.lastPrepareTimeoutMs = proposer.config.GetPrepareTimeoutMs()
+	proposer.lastAcceptTimeoutMs = proposer.config.GetAcceptTimeoutMs()
 
 	return proposer
 }
 
 func (proposer *Proposer) InitForNewPaxosInstance(isMyCommit bool) {
-	if !isMyCommit { // TODO phxpaxos没有，意义未明
-		return
-	}
+
 	proposer.msgCounter.StartNewRound()
 	proposer.state.init()
 
@@ -168,14 +167,14 @@ func (proposer *Proposer) isWorking() bool {
 	return proposer.prepareTimerId > 0 || proposer.acceptTimerId > 0
 }
 
-func (proposer *Proposer) NewValue(value []byte, timeOutMs uint32) {
+func (proposer *Proposer) NewValue(value []byte) {
 	if len(proposer.state.GetValue()) == 0 {
 		proposer.state.SetValue(value)
 	}
 
 	proposer.lastPrepareTimeoutMs = GetStartPrepareTimeoutMs()
 	proposer.lastAcceptTimeoutMs = GetStartAcceptTimeoutMs()
-	proposer.timeOutMs = timeOutMs
+
 	proposer.lastStartTimeMs = util.NowTimeMs()
 
 	// TODO paxos的优化 multi-paxos  ???
@@ -187,6 +186,7 @@ func (proposer *Proposer) NewValue(value []byte, timeOutMs uint32) {
 	}
 }
 
+/*
 func (proposer *Proposer) isTimeout() bool {
 	now := util.NowTimeMs()
 	diff := now - proposer.lastStartTimeMs
@@ -205,11 +205,10 @@ func (proposer *Proposer) isTimeout() bool {
 
 	return false
 }
+*/
 
 func (proposer *Proposer) prepare(needNewBallot bool) {
-	if proposer.isTimeout() {
-		return
-	}
+
 
 	base := proposer.Base
 	state := proposer.state
@@ -237,7 +236,7 @@ func (proposer *Proposer) prepare(needNewBallot bool) {
 	}
 
 	proposer.msgCounter.StartNewRound()
-	proposer.addPrepareTimer(proposer.lastPrepareTimeoutMs)
+	proposer.addPrepareTimer(0)
 
 	base.broadcastMessage(msg, BroadcastMessage_Type_RunSelf_First, Default_SendType)
 }
@@ -263,11 +262,12 @@ func (proposer *Proposer) addPrepareTimer(timeOutMs uint32) {
 		proposer.prepareTimerId = 0
 	}
 
-	if timeOutMs > proposer.timeOutMs {
-		timeOutMs = uint32(proposer.timeOutMs)
+	if timeOutMs > 0 {
+		proposer.prepareTimerId = proposer.timerThread.AddTimer(timeOutMs, Timer_Proposer_Prepare_Timeout, proposer.instance)
+		return
 	}
 
-	proposer.prepareTimerId = proposer.timerThread.AddTimer(timeOutMs, Timer_Proposer_Prepare_Timeout, proposer.instance)
+	proposer.prepareTimerId = proposer.timerThread.AddTimer(proposer.lastPrepareTimeoutMs, Timer_Proposer_Prepare_Timeout, proposer.instance)
 	proposer.lastPrepareTimeoutMs *= 2
 	if proposer.lastPrepareTimeoutMs > GetMaxPrepareTimeoutMs() {
 		proposer.lastPrepareTimeoutMs = GetMaxPrepareTimeoutMs()
@@ -281,10 +281,11 @@ func (proposer *Proposer) addAcceptTimer(timeOutMs uint32) {
 		proposer.acceptTimerId = 0
 	}
 
-	if timeOutMs > proposer.timeOutMs {
-		timeOutMs = uint32(proposer.timeOutMs)
+	if timeOutMs > 0 {
+		proposer.acceptTimerId = proposer.timerThread.AddTimer(timeOutMs, Timer_Proposer_Accept_Timeout, proposer.instance)
+		return
 	}
-	proposer.acceptTimerId = proposer.timerThread.AddTimer(timeOutMs, Timer_Proposer_Accept_Timeout, proposer.instance)
+	proposer.acceptTimerId = proposer.timerThread.AddTimer(proposer.lastAcceptTimeoutMs, Timer_Proposer_Accept_Timeout, proposer.instance)
 	proposer.lastAcceptTimeoutMs *= 2
 	if proposer.lastAcceptTimeoutMs > GetMaxAcceptTimeoutMs() {
 		proposer.lastAcceptTimeoutMs = GetMaxAcceptTimeoutMs()
@@ -338,9 +339,7 @@ func (proposer *Proposer) OnPrepareReply(msg *PaxosMsg) error {
 }
 
 func (proposer *Proposer) accept() {
-	if proposer.isTimeout() {
-		return
-	}
+
 	base := proposer.Base
 	state := proposer.state
 
@@ -360,7 +359,7 @@ func (proposer *Proposer) accept() {
 
 	proposer.msgCounter.StartNewRound()
 
-	proposer.addAcceptTimer(proposer.lastAcceptTimeoutMs)
+	proposer.addAcceptTimer(0)
 
 	base.broadcastMessage(msg, BroadcastMessage_Type_RunSelf_Final, Default_SendType)
 }
@@ -397,7 +396,6 @@ func (proposer *Proposer) OnAcceptReply(msg *PaxosMsg) error {
 		state.SetOtherProposalId(msg.GetRejectByPromiseID())
 	}
 
-	// TODO
 	if msgCounter.IsPassedOnThisRound() {
 		log.Infof("[Accept Pass]")
 		proposer.exitAccept()
@@ -419,4 +417,9 @@ func (proposer *Proposer) onPrepareTimeout() {
 
 func (proposer *Proposer) onAcceptTimeout() {
 	proposer.prepare(proposer.wasRejectBySomeone)
+}
+
+
+func (proposer *Proposer) CancelSkipPrepare() {
+	proposer.canSkipPrepare = false
 }

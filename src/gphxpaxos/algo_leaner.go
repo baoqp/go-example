@@ -180,7 +180,7 @@ func (learner *Learner) ResetAskforLearnNoop(timeout int) {
 		learner.timerThread.DelTimer(learner.askforlearnNoopTimerID)
 	}
 
-	learner.askforlearnNoopTimerID = learner.timerThread.AddTimer(uint32(timeout), LearnerTimer, learner.instance)
+	learner.askforlearnNoopTimerID = learner.timerThread.AddTimer(uint32(timeout), Timer_Learner_Askforlearn_noop, learner.instance)
 }
 
 func (learner *Learner) AskforLearnNoop() {

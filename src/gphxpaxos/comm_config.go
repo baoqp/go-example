@@ -181,10 +181,10 @@ func (config *Config) GetAskforLearnTimeoutMs() int {
 	return 2000
 }
 
-func (config *Config) GetPrepareTimeoutMs() int {
+func (config *Config) GetPrepareTimeoutMs() uint32 {
 	return 3000
 }
 
-func (config *Config) GetAcceptTimeoutMs() int {
+func (config *Config) GetAcceptTimeoutMs() uint32 {
 	return 3000
 }

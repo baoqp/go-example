@@ -8,7 +8,7 @@ import (
 )
 
 //---------------------------------------CommitContext--------------------------------------------//
-const DEFAULT_TIMEOUT_MS = 20000
+const DEFAULT_TIMEOUT_MS = 10000
 
 type CommitContext struct {
 	instanceId          uint64
@@ -196,7 +196,8 @@ func (committer *Committer) NewValueGetID(value []byte, context *SMCtx) (uint64,
 	var instanceid uint64
 	for i := 0; i < MaxTryCount; i++ {
 		instanceid, err = committer.newValueGetIDNoRetry(value, context)
-		if err != PaxosTryCommitRet_Conflict && err != PaxosTryCommitRet_WaitTimeout {
+		if err != PaxosTryCommitRet_Conflict && err != PaxosTryCommitRet_WaitTimeout  &&
+			err != PaxosTryCommitRet_TooManyThreadWaiting_Reject {  // 可以重试的错误
 			break
 		}
 
@@ -214,6 +215,10 @@ func (committer *Committer) newValueGetIDNoRetry(value []byte, context *SMCtx) (
 
 	if err == util.Waitlock_Timeout {
 		return 0, PaxosTryCommitRet_WaitTimeout
+	}
+
+	if err == util.Waitlock_ExceedMaxWait {
+		return 0, PaxosTryCommitRet_TooManyThreadWaiting_Reject
 	}
 
 	if committer.timeoutMs <= uint32(200+lockUseTime) {

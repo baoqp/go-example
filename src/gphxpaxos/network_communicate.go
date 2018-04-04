@@ -43,7 +43,9 @@ func (c *Communicate) BroadcastMessage(groupIdx int32, value []byte, sendType in
 	c.cfg.SystemVSM.GetMembership(&nodeInfoList, &version)
 
 	for _, nodeInfo := range nodeInfoList {
-		c.network.SendMessageTCP(groupIdx, nodeInfo.Ip, nodeInfo.Port, value)
+		if nodeInfo.NodeId != c.myNodeId {
+			c.network.SendMessageTCP(groupIdx, nodeInfo.Ip, nodeInfo.Port, value)
+		}
 	}
 	return nil
 }

@@ -13,8 +13,8 @@ import (
 	"errors"
 	"path/filepath"
 
-
 	"io/ioutil"
+	"math"
 )
 
 func Rand(up int) int {
@@ -38,13 +38,13 @@ func DeleteDir(path string) error {
 	return os.RemoveAll(path)
 }
 
-func IterDir(path string) ([]string, error){
+func IterDir(path string) ([]string, error) {
 	var allFile []string
 	finfos, err := ioutil.ReadDir(path)
 	if err != nil {
 		return nil, err
 	}
-	for _ ,x := range finfos {
+	for _, x := range finfos {
 		realPath := path + string(filepath.Separator) + x.Name()
 		if x.IsDir() {
 			subDirFiles, err := IterDir(realPath)
@@ -53,13 +53,11 @@ func IterDir(path string) ([]string, error){
 			}
 			allFile = append(allFile, subDirFiles...)
 		} else {
-			allFile = append(allFile,realPath)
+			allFile = append(allFile, realPath)
 		}
 	}
 	return allFile, nil
 }
-
-
 
 //---------------------------------[]byte操作-------------------------------------//
 
@@ -137,7 +135,6 @@ func Inet_addr(ipaddr string) uint32 {
 	return ret
 }
 
-
 type TimeStat struct {
 	mTime uint64
 }
@@ -146,7 +143,7 @@ func NewTimeStat() *TimeStat {
 	return &TimeStat{mTime: NowTimeMs()}
 }
 
-func(t *TimeStat) Point() uint64 {
+func (t *TimeStat) Point() uint64 {
 	nowTime := NowTimeMs()
 
 	passTime := uint64(0)
@@ -159,7 +156,6 @@ func(t *TimeStat) Point() uint64 {
 
 	return passTime
 }
-
 
 // ---------------------------------对象相关操作---------------------------------//
 
@@ -192,4 +188,11 @@ func CopyStruct(dst interface{}, src interface{}) (err error) {
 		}
 	}
 	return
+}
+
+// ---------------------------------业务相关---------------------------------//
+
+func GenGid(instanceId uint64) uint64 {
+	rand := uint64(Rand(math.MaxUint32))
+	return rand ^ instanceId + rand
 }

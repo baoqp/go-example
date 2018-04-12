@@ -1,7 +1,7 @@
 package gmushroom
 
 
-type pageId uint32
+type PageId uint32
 
 const (
 	Fail = iota

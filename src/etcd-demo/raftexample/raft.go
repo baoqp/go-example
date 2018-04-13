@@ -48,7 +48,7 @@ type raftNode struct {
 	waldir      string   // path to WAL directory
 	snapdir     string   // path to snapshot directory
 	getSnapshot func() ([]byte, error)
-	lastIndex   uint64 // index of log at start
+	lastIndex   uint64 // index of log at start TODO ???
 
 	confState     raftpb.ConfState
 	snapshotIndex uint64
@@ -122,15 +122,16 @@ func (rc *raftNode) saveSnap(snap raftpb.Snapshot) error {
 	return rc.wal.ReleaseLockTo(snap.Metadata.Index)
 }
 
+// 返回需要apply的entry
 func (rc *raftNode) entriesToApply(ents []raftpb.Entry) (nents []raftpb.Entry) {
 	if len(ents) == 0 {
 		return
 	}
 	firstIdx := ents[0].Index
-	if firstIdx > rc.appliedIndex+1 {
+	if firstIdx > rc.appliedIndex+1 { // 否则entry就不连续了
 		log.Fatalf("first index of committed entry[%d] should <= progress.appliedIndex[%d] 1", firstIdx, rc.appliedIndex)
 	}
-	if rc.appliedIndex-firstIdx+1 < uint64(len(ents)) {
+	if rc.appliedIndex-firstIdx+1 < uint64(len(ents)) { // 从未apply的entry开始
 		nents = ents[rc.appliedIndex-firstIdx+1:]
 	}
 	return nents
@@ -153,6 +154,7 @@ func (rc *raftNode) publishEntries(ents []raftpb.Entry) bool {
 				return false
 			}
 
+			// 每次修改一个节点，不需要两阶段的修改，走一遍raft proposal过程即可
 		case raftpb.EntryConfChange:
 			var cc raftpb.ConfChange
 			cc.Unmarshal(ents[i].Data)
@@ -175,7 +177,7 @@ func (rc *raftNode) publishEntries(ents []raftpb.Entry) bool {
 		rc.appliedIndex = ents[i].Index
 
 		// special nil commit to signal replay has finished
-		if ents[i].Index == rc.lastIndex {
+		if ents[i].Index == rc.lastIndex { // TODO ???
 			select {
 			case rc.commitC <- nil:
 			case <-rc.stopc:
@@ -222,6 +224,10 @@ func (rc *raftNode) openWAL(snapshot *raftpb.Snapshot) *wal.WAL {
 }
 
 // replayWAL replays WAL entries into the raft instance.
+// 重建节点状态：
+// 1.读取快照
+// 2.从WAL中读取快照之后的全部log entry
+// 3.把快照应用于raftStorage，并append WAL中读出的log entry
 func (rc *raftNode) replayWAL() *wal.WAL {
 	log.Printf("replaying WAL of member %d", rc.id)
 	snapshot := rc.loadSnapshot()
@@ -242,7 +248,7 @@ func (rc *raftNode) replayWAL() *wal.WAL {
 	if len(ents) > 0 {
 		rc.lastIndex = ents[len(ents)-1].Index
 	} else {
-		rc.commitC <- nil
+		rc.commitC <- nil // TODO is current 最新的??? nil
 	}
 	return w
 }
@@ -261,6 +267,7 @@ func (rc *raftNode) startRaft() {
 			log.Fatalf("raftexample: cannot create dir for snapshot (%v)", err)
 		}
 	}
+
 	rc.snapshotter = raftsnap.New(rc.snapdir)
 	rc.snapshotterReady <- rc.snapshotter
 
@@ -280,6 +287,7 @@ func (rc *raftNode) startRaft() {
 		MaxInflightMsgs: 256,
 	}
 
+	// 如果有老的wal日志，就从wal日志中读取peers信息
 	if oldwal {
 		rc.node = raft.RestartNode(c)
 	} else {
@@ -295,7 +303,7 @@ func (rc *raftNode) startRaft() {
 		ClusterID:   0x1000,
 		Raft:        rc,
 		ServerStats: stats.NewServerStats("", ""),
-		LeaderStats: stats.NewLeaderStats(strconv.Itoa(rc.id)),
+		LeaderStats: stats.NewLeaderStats(strconv.Itoa(rc.id)), // TODO ???
 		ErrorC:      make(chan error),
 	}
 
@@ -362,6 +370,7 @@ func (rc *raftNode) maybeTriggerSnapshot() {
 		panic(err)
 	}
 
+	// 创建快照之后，可以compact老的log entry
 	compactIndex := uint64(1)
 	if rc.appliedIndex > snapshotCatchUpEntriesN {
 		compactIndex = rc.appliedIndex - snapshotCatchUpEntriesN
@@ -420,9 +429,9 @@ func (rc *raftNode) serveChannels() {
 	for {
 		select {
 		case <-ticker.C:
-			rc.node.Tick()
+			rc.node.Tick() // 逻辑时钟
 
-		// store raft entries to wal, then publish over commit channel
+			// store raft entries to wal, then publish over commit channel
 		case rd := <-rc.node.Ready():
 			rc.wal.Save(rd.HardState, rd.Entries)
 			if !raft.IsEmptySnap(rd.Snapshot) {
@@ -461,6 +470,7 @@ func (rc *raftNode) serveRaft() {
 		log.Fatalf("raftexample: Failed to listen rafthttp (%v)", err)
 	}
 
+	// 监听连接
 	err = (&http.Server{Handler: rc.transport.Handler()}).Serve(ln)
 	select {
 	case <-rc.httpstopc:

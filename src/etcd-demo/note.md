@@ -1,6 +1,7 @@
 
+## etcd raft库的使用
 
-[etcd raft library设计原理和使用](http://www.cnblogs.com/foxmailed/p/7137431.html)
+### [etcd raft library设计原理和使用](http://www.cnblogs.com/foxmailed/p/7137431.html)
 
 etcd提供的raft库只负责把消息保存在内存中，需要自行实现网络传输层以完成消息的发送和接收
 
@@ -127,22 +128,32 @@ func (n *node) ApplyConfChange(cc pb.ConfChange) *pb.ConfState
 取出最新的成员组返回给应用。
 
 
-https://zhuanlan.zhihu.com/p/29180575
 
-
-https://blog.neverchanje.com/2017/01/30/etcd_raft_core/
-
-
-http://int64.me/2017/How%20to%20use%20Raft.html
-
-
-https://medium.com/@daniel.chia/diving-into-etcd-raft-d48ce1cb6859
-
-
-https://github.com/coreos/etcd/tree/master/contrib/raftexample
+### [etcd-raft使用分析](http://www.opscoder.info/ectd-raft-example.html)
 
 
 
-https://segmentfault.com/a/1190000008006649
+
+## etcd raft库的原理
+
+### 参考资料
+知乎专栏 https://zhuanlan.zhihu.com/distributed-storage
+[Etcd Raft Libary 源码阅读：Core]https://blog.neverchanje.com/2017/01/30/etcd_raft_core/
+
+### WAL
+[package wal](https://godoc.org/github.com/coreos/etcd/wal)
+[etcd-raft日志管理](https://zhuanlan.zhihu.com/p/29692778)
+
+日志项会被存储在三个地方，按照其出现的顺序分别为：unstable, WAL 和 storage
+unstable: 维护协议层的日志项，保存在内存中，不稳定
+WAL(write ahead log): 负责日志项的持久化存储
+
+> 只考虑log entries的话，unstable是未落盘的，WAL是已落盘entries，storage是访问已落盘数据的interface，
+具体实现上，一般是WAL加某种cache的实现。etcd自带的memoryStorage实现这个storage接口，但比较简单，是没有被
+compact掉的已落盘entries在内存的一份拷贝，和传统意义cache不同，因为它有已落盘未compact掉的所有数据。
+unstable不是复制数据的来源，在有follower落后、刚重启、新join的情况下，给这类follower的数据多数来自已落盘部分。
+cockroachdb使用一个基于llrb的LRU cache来替代memoryStorage这个东西，WAL部分是rocksdb。
+
+
 
 

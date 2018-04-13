@@ -63,7 +63,7 @@ func (s *kvstore) Propose(k string, v string) {
 
 func (s *kvstore) readCommits(commitC <-chan *string, errorC <-chan error) {
 	for data := range commitC {
-		if data == nil {
+		if data == nil {  // TODO
 			// done replaying log; new data incoming
 			// OR signaled to load snapshot
 			snapshot, err := s.snapshotter.Load()
@@ -89,11 +89,13 @@ func (s *kvstore) readCommits(commitC <-chan *string, errorC <-chan error) {
 		s.kvStore[dataKv.Key] = dataKv.Val
 		s.mu.Unlock()
 	}
+
 	if err, ok := <-errorC; ok {
 		log.Fatal(err)
 	}
 }
 
+// 序列化当前的状态用作快照
 func (s *kvstore) getSnapshot() ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -248,7 +248,7 @@ func (rc *raftNode) replayWAL() *wal.WAL {
 	if len(ents) > 0 {
 		rc.lastIndex = ents[len(ents)-1].Index
 	} else {
-		rc.commitC <- nil // TODO is current 最新的??? nil
+		rc.commitC <- nil // TODO 做快照 ???
 	}
 	return w
 }
@@ -272,7 +272,7 @@ func (rc *raftNode) startRaft() {
 	rc.snapshotterReady <- rc.snapshotter
 
 	oldwal := wal.Exist(rc.waldir)
-	rc.wal = rc.replayWAL()
+	rc.wal = rc.replayWAL() // start时从WAL恢复状态
 
 	rpeers := make([]raft.Peer, len(rc.peers))
 	for i := range rpeers {
@@ -341,7 +341,8 @@ func (rc *raftNode) publishSnapshot(snapshotToSave raftpb.Snapshot) {
 	defer log.Printf("finished publishing snapshot at index %d", rc.snapshotIndex)
 
 	if snapshotToSave.Metadata.Index <= rc.appliedIndex {
-		log.Fatalf("snapshot index [%d] should > progress.appliedIndex [%d] + 1", snapshotToSave.Metadata.Index, rc.appliedIndex)
+		log.Fatalf("snapshot index [%d] should > progress.appliedIndex [%d] + 1",
+			snapshotToSave.Metadata.Index, rc.appliedIndex)
 	}
 	rc.commitC <- nil // trigger kvstore to load snapshot
 
@@ -431,7 +432,7 @@ func (rc *raftNode) serveChannels() {
 		case <-ticker.C:
 			rc.node.Tick() // 逻辑时钟
 
-			// store raft entries to wal, then publish over commit channel
+		// store raft entries to wal, then publish over commit channel
 		case rd := <-rc.node.Ready():
 			rc.wal.Save(rd.HardState, rd.Entries)
 			if !raft.IsEmptySnap(rd.Snapshot) {

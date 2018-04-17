@@ -154,6 +154,32 @@ compact掉的已落盘entries在内存的一份拷贝，和传统意义cache不�
 unstable不是复制数据的来源，在有follower落后、刚重启、新join的情况下，给这类follower的数据多数来自已落盘部分。
 cockroachdb使用一个基于llrb的LRU cache来替代memoryStorage这个东西，WAL部分是rocksdb。
 
+raft storage 内存中维护了那些已经被写入WAL但是未compact的日志项，同时还记录了最近一次的snapshot信息。
+节点每次完成snapshot后，便可以回收该snapshot之前的所有日志项，以释放日志项占用的内存。
+
+unstable log中的日志项来源主要有二：于Leader节点，日志项是来自客户端的更新请求而形成的日志；
+于Follower节点，日志项源自Leader节点的复制。
+无论是Leader还是Follower，unstable log中的日志项最终都会被应用获取到并进行一系列处理（如写入WAL、存储至storage、
+发送到其他Follower等），处理完成后，这些日志项可能就会变得不再有效，可以被回收。
+
+
+### snapshot
+
+[etcd-raft snapshot实现分析](https://zhuanlan.zhihu.com/p/29865583)
+
+Follower节点被动接受Leader发送过来的snapshot后，需要将该snapshot应用到本身的状态机，其过程是：
+Follower节点的raft内部状态机会将unstable log中的snapshot信息放在Ready结构中，应用通过Ready()
+接口获取到snapshot信息，然后重放。
+
+
+### leader transfer
+[etcd raft如何实现leadership transfer](https://zhuanlan.zhihu.com/p/27895034)
+
+大概原理是保证transferee(transfer的目标follower)拥有和原leader有一样新的日志，期间需要停写，
+然后给transferee发送一个特殊的消息，让这个follower可以马上进行选主，而不用等到election timeout。
+正常情况下，这个follower的term最大，当选，原来的leader变为follower。
+
+
 
 
 

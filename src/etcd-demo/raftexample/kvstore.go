@@ -61,6 +61,7 @@ func (s *kvstore) Propose(k string, v string) {
 	s.proposeC <- buf.String()
 }
 
+// 读取commit消息应用状态机
 func (s *kvstore) readCommits(commitC <-chan *string, errorC <-chan error) {
 	for data := range commitC {
 		if data == nil {  // TODO

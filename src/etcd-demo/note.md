@@ -136,6 +136,8 @@ func (n *node) ApplyConfChange(cc pb.ConfChange) *pb.ConfState
 
 ## etcd raft库的原理
 
+https://godoc.org/github.com/coreos/etcd/raft
+
 ### 参考资料
 知乎专栏 https://zhuanlan.zhihu.com/distributed-storage
 [Etcd Raft Libary 源码阅读：Core]https://blog.neverchanje.com/2017/01/30/etcd_raft_core/
@@ -180,6 +182,7 @@ Follower节点的raft内部状态机会将unstable log中的snapshot信息放在
 正常情况下，这个follower的term最大，当选，原来的leader变为follower。
 
 
+http://int64.me/2017/Leader%20Transfer%20In%20TiKV.html
 
 
 

@@ -2,6 +2,7 @@ package bplus_tree
 
 import (
 	"util"
+	"fmt"
 )
 
 
@@ -66,6 +67,10 @@ func valueLoad(tree *Tree, offset uint64, length uint64, value *Value) error {
 	// read data from disk first
 	bufLen := length
 	buff, err := tree.writerRead(DefaultComp, offset, &bufLen)
+
+	fmt.Println("read value")
+	fmt.Println(buff)
+
 	if err != nil {
 		return err
 	}
@@ -75,6 +80,8 @@ func valueLoad(tree *Tree, offset uint64, length uint64, value *Value) error {
 	value.prevLength = util.DecodeUint64(buff, 8)
 	copy(value.value, buff[16:])
 	value.length = bufLen - 16
+
+
 
 	return nil
 }
@@ -92,6 +99,9 @@ func valueSave(tree *Tree, value *Value, previous *KV, offset *uint64,
 	}
 
 	copy(buff[16: 16+value.length], value.value)
+
+	fmt.Println("write value")
+	fmt.Println(buff)
 
 	*length = value.length + 16
 	return tree.writerWrite(DefaultComp, buff, offset, length)

@@ -3,6 +3,7 @@ package bplus_tree
 import (
 	"unsafe"
 	"util"
+
 )
 
 type PageType int
@@ -72,7 +73,7 @@ func (page *Page) read(tree *Tree) error {
 
 	// Read page size and leaf flag
 	size := page.config >> 1
-	if page.config&1 > 0 {
+	if page.config & 1 > 0 {
 		page.typ = kLeaf
 	} else {
 		page.typ = kPage
@@ -249,7 +250,6 @@ func (page *Page) get(tree *Tree, key *Key, value *Value) error {
 		if res.cmp != 0 {
 			return ENOTFOUND
 		}
-
 		return pageLoadValue(tree, page, res.index, value)
 	} else {
 		err := res.child.get(tree, key, value)
@@ -334,7 +334,8 @@ func (page *Page) insert(tree *Tree, key *Key, value *Value, updataCb UpdateCall
 	}
 
 
-	if res.index >= page.length {
+	// cmp != 0 说明有元素插入，需要扩大slice
+	if res.cmp != 0 {
 		page.keys = append(page.keys, KV{})
 	}
 
@@ -368,7 +369,7 @@ func (page *Page) insert(tree *Tree, key *Key, value *Value, updataCb UpdateCall
 			if err != nil {
 				return err
 			} else {
-				page = newHead
+				*page = *newHead
 			}
 		} else {
 			return ESPLITPAGE
@@ -629,7 +630,9 @@ func (page *Page) removeIdx(index uint64) error {
 func (page *Page) shiftr(index uint64) {
 	if page.length > 0 {
 		for i := page.length - 1; i >= index; i-- {
-			kvCopy(&page.keys[i], &page.keys[i+1], false)
+			source := &page.keys[i]
+			target := &page.keys[i+1]
+			kvCopy(source, target, false)
 			if i == 0 {
 				break
 			}

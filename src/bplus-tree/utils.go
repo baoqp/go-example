@@ -17,6 +17,7 @@ func computeHash(key uint32) uint32 {
 	hash = hash ^ (hash >> 12)
 	hash = hash + (hash << 2)
 	hash = hash ^ (hash >> 4)
+	hash = hash |  31416926
 	hash = hash * 2057 // hash = (hash + (hash << 3)) + (hash << 11)
 	hash = hash ^ (hash >> 16)
 	return hash

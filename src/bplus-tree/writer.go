@@ -5,6 +5,7 @@ import (
 
 	"fmt"
 	"util"
+	"github.com/pkg/errors"
 )
 
 type Writer struct {
@@ -14,39 +15,40 @@ type Writer struct {
 	padding  [PADDING]byte // TODO
 }
 
-func writerCreate(writer *Writer, fileName string) error {
-
+func (t *Tree) creatreWriter(fileName string) (*Writer, error) {
+	writer := new(Writer)
 	writer.fileName = fileName
 
 	var err error
 	writer.file, err = os.OpenFile(fileName,
 		os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
 	if err != nil {
-		return EFILE
+		return nil, EFILE
 	}
 
 	fileSize, err := writer.file.Seek(0, os.SEEK_END)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	writer.fileSize = uint64(fileSize)
 	for i := range writer.padding {
 		writer.padding[i] = 0
 	}
 
-	return nil
+	return writer, nil
 }
 
-func writerDestroy(w *Writer) {
-	w.file.Close()
+func (t *Tree) destroyWriter() {
+	t.Writer.file.Close()
 }
 
-// linux使用 syscall.Fdatasync(int(db.file.Fd()))
-func writerFsync(w *Writer) {
-	w.file.Sync()
+// linux使用 syscall.Fdatasync(int(Tree.file.Fd()))
+func (t *Tree) writerFsync() {
+	t.Writer.file.Sync()
 }
 
-func writerCompactName(w *Writer) (string, error) {
+func (t *Tree) writerCompactName() (string, error) {
+	w := t.Writer
 	compactName := fmt.Sprintf("%s.compact", w.fileName)
 
 	if exits, err := util.Exists(compactName); err != nil {
@@ -65,8 +67,10 @@ func writerCompactFinalize(s *Writer, t *Writer) {
 
 }
 
-func writerRead(w *Writer, compType CompType, offset uint64,
+func (t *Tree) writerRead(compType CompType, offset uint64,
 	size *uint64) ([]byte, error) {
+
+	w := t.Writer
 
 	if w.fileSize < offset + *size {
 		return nil, EFILEREAD_OOB
@@ -84,17 +88,21 @@ func writerRead(w *Writer, compType CompType, offset uint64,
 	}
 
 	if compType == kNotCompressed { // 没有使用压缩
+		return data, nil
 
 	} else { // 如果写入时使用了压缩需要解压缩 TODO
+		return nil, errors.New("not support yet")
 
 	}
 
-	return data, nil
+
 }
 
-func writerWrite(w *Writer, compType CompType, data []byte,
+// 写入文件末尾，并返回在文件中的offset
+func (t *Tree) writerWrite(compType CompType, data []byte,
 	offset *uint64, size *uint64) error {
 
+	w := t.Writer
 	paddding := uint64(len(w.padding)) - (w.fileSize % uint64(len(w.padding)))
 
 	// writer padding
@@ -133,29 +141,29 @@ func writerWrite(w *Writer, compType CompType, data []byte,
 	return nil
 }
 
-type WriterCallback func(w *Writer, data []byte) error
+type WriterCallback func(t *Tree, data []byte) error
 
-func writerFind(w *Writer, compType CompType, size uint64, data []byte,
+func (t *Tree) writerFind(compType CompType, size uint64, data []byte,
 	seek WriterCallback, miss WriterCallback) error {
-
+	w := t.Writer
 	match := false
 	// Write padding first
-	err := writerWrite(w, kNotCompressed, nil, nil, nil)
+	err := t.writerWrite(kNotCompressed, nil, nil, nil)
 	if err != nil {
 		return err
 	}
 
 	offset := w.fileSize
-	sizeTmp := offset
+	sizeTmp := size
 
 	//  Start seeking from bottom of file
 	for ; offset >= size; {
-		data, err := writerRead(w, compType, offset-size, &sizeTmp)
+		data, err := t.writerRead(compType, offset-size, &sizeTmp)
 		if err != nil {
 			return err
 		}
 		// Break if matched
-		if seek(w, data) == nil {
+		if seek(t, data) == nil {
 			match = true
 			break
 		}
@@ -164,7 +172,7 @@ func writerFind(w *Writer, compType CompType, size uint64, data []byte,
 	}
 
 	if !match {
-		return miss(w, data)
+		return miss(t, data)
 	}
 
 	return nil

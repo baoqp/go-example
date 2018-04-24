@@ -1,10 +1,11 @@
 package bplus_tree
 
 import (
-	"os"
 	"sync"
-	"unsafe"
+
 	"github.com/pkg/errors"
+	"util"
+	"fmt"
 )
 
 const PADDING = 64
@@ -16,19 +17,15 @@ type TreeHeader struct {
 	config   uint64
 	pageSize uint64
 	hash     uint64
-
-	page *Page
+	page     *Page
 }
 
-// bp_db_s
-type DB struct {
+// bp_Tree_s
+type Tree struct {
 	// 实际是tree
-	file      *os.File
-	fileName  string
-	fileSize  uint64
-	padding   [PADDING]byte // TODO
+	*Writer
 	rmLock    sync.RWMutex
-	header    TreeHeader
+	header    *TreeHeader
 	comparaCb ComparaCallback
 }
 
@@ -42,28 +39,143 @@ const (
 	DefaultComp    CompType = kNotCompressed
 )
 
-func open(tree *DB, filename string) error {
-	var err error
-	tree.rmLock.Lock()
-	err = writerCreate((*Writer)(unsafe.Pointer(tree)), filename)
-	if err != nil {
-		return err
+
+
+func (t *Tree) init() error {
+	//  Load head.
+	err := t.writerFind(kNotCompressed, HeaderSize,
+		 nil, treeReadHead, treeWriteHead)
+
+	if err == nil {
+		t.comparaCb = defaultCompareCb
 	}
-	tree.header.page = nil
-	err = initTree(tree)
-	tree.rmLock.Unlock()
 	return err
 }
 
-func treeReadHead(w *Writer, data []byte) error {
-	var err error
-	t := (*DB)(unsafe.Pointer(w))
-	head := *(*TreeHeader)(unsafe.Pointer(&data))
 
-	t.header.offset = head.offset // ntohll ???
-	t.header.config = head.config
-	t.header.pageSize = head.pageSize
-	t.header.hash = head.hash
+func (t *Tree) get(key *Key, value *Value) error {
+	t.rmLock.RLock()
+	err := t.header.page.get(t, key, value)
+	t.rmLock.RUnlock()
+	return err
+}
+
+func (t *Tree) getPrevious(value *Value, previous *Value) error {
+	t.rmLock.RLock()
+	if value.prevOffset == 0 && value.prevLength == 0 {
+		return ENOTFOUND
+	}
+	err := valueLoad(t, value.prevOffset, value.prevOffset, previous)
+	t.rmLock.RUnlock()
+	return err
+}
+
+
+func (t *Tree) update(key *Key, value *Value, updateCb UpdateCallback, arg []byte) error {
+	var err error
+	t.rmLock.Lock()
+	err = t.header.page.insert(t, key, value, updateCb, arg)
+	if err == nil { // TODO
+		err = treeWriteHead(t, nil)
+	}
+	t.rmLock.Unlock()
+	return err
+}
+
+
+
+func (t *Tree) bulkUpdate(count uint64, keys []*Key, values []*Value, updateCb UpdateCallback, arg []byte) error {
+	var err error
+	t.rmLock.Lock()
+	left := count
+	err = t.header.page.bulkInsert(t, nil, &left, keys, values, updateCb, arg)
+	if err == nil {
+		err = treeWriteHead(t, nil)
+	}
+	t.rmLock.Unlock()
+	return err
+}
+
+
+
+func (t *Tree) remove(key *Key, removeCb RemoveCallback, arg []byte) error {
+	var err error
+	t.rmLock.Lock()
+	err = t.header.page.remove(t, key, removeCb, arg)
+	if err == nil {
+		err = treeWriteHead(t, nil)
+	}
+	t.rmLock.Unlock()
+	return err
+
+}
+
+// TODO
+func (t *Tree) compact() error {
+	return nil
+}
+
+
+func (t *Tree) getFilteredRange(start *Key, end *Key, callback FilterCallback,
+	rangeCallback RangeCallback, arg []byte) error {
+
+	var err error
+	t.rmLock.Lock()
+	err = t.header.page.getRange(t,start, end, callback, rangeCallback, arg)
+	t.rmLock.Unlock()
+	return err
+}
+
+func defaultFilterCallback(arg []byte, key *Key) bool {
+	return true
+}
+
+
+func (t *Tree) getRange(start *Key, end *Key,
+	rangeCallback RangeCallback, arg []byte) error {
+	var err error
+	t.rmLock.Lock()
+	err = t.header.page.getRange(t, start, end, defaultFilterCallback,
+		rangeCallback, arg)
+	t.rmLock.Unlock()
+	return err
+}
+
+func (t *Tree) pageCreate(typ PageType, offset uint64, config uint64) *Page {
+	page := new(Page)
+	page.typ = typ
+	if typ == kLeaf {
+		page.length = 0
+		page.byteSize = 0
+	} else {
+		// TODO non-leaf pages always have left element ???
+		page.length = 1
+		kv := KV{
+			value:     nil,
+			offset:    0,
+			length:    0,
+			config:    0,
+			allocated: false,
+		}
+		page.keys = append(page.keys, kv)
+		page.byteSize = kvSize(&page.keys[0])
+	}
+
+	page.offset = offset
+	page.config = config
+	page.buff = nil
+	page.isHead = false
+	return page
+}
+
+func treeReadHead(t *Tree, data []byte) error {
+	var err error
+	t.header.offset = util.DecodeUint64(data, 0)
+	t.header.config = util.DecodeUint64(data, 8)
+	t.header.pageSize = util.DecodeUint64(data, 16)
+	t.header.hash = util.DecodeUint64(data, 24)
+	fmt.Println("treeReadHead")
+	fmt.Println(t.header)
 
 	data = data[:0]
 
@@ -79,12 +191,11 @@ func treeReadHead(w *Writer, data []byte) error {
 	return nil
 }
 
-func treeWriteHead(w *Writer, data []byte) error {
-	t := (*DB)(unsafe.Pointer(w))
+func treeWriteHead(t *Tree, data []byte) error {
 
 	if t.header.page == nil {
 		t.header.pageSize = 64
-		t.header.page = pageCreate(t, kLeaf, 0, 1)
+		t.header.page = t.pageCreate(kLeaf, 0, 1)
 		t.header.page.isHead = true
 	}
 
@@ -92,16 +203,18 @@ func treeWriteHead(w *Writer, data []byte) error {
 	t.header.config = t.header.page.config
 	t.header.hash = computeHashl(t.header.offset)
 
-	nhead := new(TreeHeader)
-	nhead.offset = t.header.offset
-	nhead.config = t.header.config
-	nhead.pageSize = t.header.pageSize
-	nhead.hash = t.header.hash
+	buff := make([]byte, HeaderSize)
+	util.EncodeUint64(buff, 0, t.header.offset)
+	util.EncodeUint64(buff, 8, t.header.config)
+	util.EncodeUint64(buff, 16, t.header.pageSize)
+	util.EncodeUint64(buff, 24, t.header.hash)
+
+	fmt.Println("treeWriteHead")
+	fmt.Println(t.header)
 
 	size := uint64(HeaderSize)
 	var offset uint64
-	return writerWrite(w, kNotCompressed, *(*[]byte)(unsafe.Pointer(nhead)),
-		&offset, &size)
+	return t.writerWrite(kNotCompressed, buff, &offset, &size)
 }
 
 func defaultCompareCb(a *Key, b *Key) int {
@@ -134,121 +247,4 @@ func defaultCompareCb(a *Key, b *Key) int {
 
 	return 0
 
-}
-
-func initTree(tree *DB) error {
-
-	err := writerFind((*Writer)(unsafe.Pointer(tree)), kNotCompressed, HeaderSize,
-		*(*[]byte)(unsafe.Pointer(&tree.header)), treeReadHead, treeWriteHead)
-
-	if err == nil {
-		tree.comparaCb = defaultCompareCb
-	}
-
-	return err
-}
-
-func close(tree *DB) error {
-	tree.rmLock.Lock()
-	tree.file.Close()
-	if tree.header.page != nil {
-		pageDestroy(tree, tree.header.page)
-		tree.header.page = nil
-	}
-
-	return nil
-}
-
-func get(tree *DB, key *Key, value *Value) error {
-	tree.rmLock.RLock()
-	err := pageGet(tree, tree.header.page, key, value)
-	tree.rmLock.RUnlock()
-	return err
-}
-
-func getPrevious(tree *DB, value *Value, previous *Value) error {
-	tree.rmLock.RLock()
-	if value.prevOffset == 0 && value.prevLength == 0 {
-		return ENOTFOUND
-	}
-	err := valueLoad(tree, value.prevOffset, value.prevOffset, previous)
-	tree.rmLock.RUnlock()
-	return err
-}
-
-func update(tree *DB, key *Key, value *Value, updateCb UpdateCallback, arg []byte) error {
-	var err error
-	tree.rmLock.Lock()
-	err = pageInsert(tree, tree.header.page, key, value, updateCb, arg)
-	if err == nil { // TODO
-		err = treeWriteHead((*Writer)(unsafe.Pointer(tree)), nil)
-	}
-	tree.rmLock.Unlock()
-	return err
-}
-
-func bulkUpdate(tree *DB, count uint64, key []*Key, value []*Value, updateCb UpdateCallback, arg []byte) error {
-	var err error
-	tree.rmLock.Lock()
-	left := count
-	err = pageBulkInsert(tree, tree.header.page, nil, &left, key, value, updateCb, arg)
-	if err == nil {
-		err = treeWriteHead((*Writer)(unsafe.Pointer(tree)), nil)
-	}
-	tree.rmLock.Unlock()
-	return err
-}
-
-func set(tree *DB, key *Key, value *Value) error {
-	return update(tree, key, value, nil, nil)
-}
-
-func bulkSet(tree *DB, count uint64, key []*Key, value []*Value) error {
-	return bulkUpdate(tree, count, key, value, nil, nil)
-}
-
-func removev(tree *DB, key *Key, removeCb RemoveCallback, arg []byte) error {
-	var err error
-	tree.rmLock.Lock()
-
-	err = pageRemove(tree, tree.header.page, key, removeCb, arg)
-	if err == nil {
-		err = treeWriteHead((*Writer)(unsafe.Pointer(tree)), nil)
-	}
-	tree.rmLock.Unlock()
-	return err
-
-}
-
-func remove(tree *DB, key *Key) error {
-	return removev(tree, key, nil, nil)
-}
-
-// TODO
-func compact(tree *DB) error {
-	return nil
-}
-
-func getFilteredRange(tree *DB, start *Key, end *Key, callback FilterCallback,
-	rangeCallback RangeCallback, arg []byte) error {
-
-	var err error
-	tree.rmLock.Lock()
-	err = pageGetRange(tree, tree.header.page, start, end, callback, rangeCallback, arg)
-	tree.rmLock.Unlock()
-	return err
-}
-
-func defaultFilterCallback(arg []byte, key *Key) bool {
-	return true
-}
-
-func getRange(tree *DB, start *Key, end *Key,
-	rangeCallback RangeCallback, arg []byte) error {
-	var err error
-	tree.rmLock.Lock()
-	err = pageGetRange(tree, tree.header.page, start, end, defaultFilterCallback,
-		rangeCallback, arg)
-	tree.rmLock.Unlock()
-	return err
 }

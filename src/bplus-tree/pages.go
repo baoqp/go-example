@@ -29,7 +29,7 @@ type Page struct {
 	config   uint64
 	buff     []byte
 	isHead   bool
-	keys     []*KV
+	keys     []KV
 }
 
 type PageSearchRes struct {
@@ -38,37 +38,9 @@ type PageSearchRes struct {
 	cmp   int
 }
 
-func pageCreate(db *DB, typ PageType, offset uint64, config uint64) *Page {
-	page := new(Page)
-	page.typ = typ
-	if typ == kLeaf {
-		page.length = 0
-		page.byteSize = 0
-	} else {
-		/* TODO non-leaf pages always have left element */
-		page.length = 1
-		kv := &KV{
-			value:     nil,
-			offset:    0,
-			length:    0,
-			config:    0,
-			allocated: false,
-		}
-		page.keys = append(page.keys, kv)
-		page.byteSize = kvSize(page.keys[0])
-	}
-
-	page.offset = offset
-	page.config = config
-	page.buff = nil
-	page.isHead = false
-
-	return page
-}
-
 // TODO 可以考虑采用对象池来缓冲page对象，避免频繁创建对象
-func pageDestroy(db *DB, page *Page) {
-	for i:=uint64(0); i<page.length; i++ {
+func (page *Page) destroy() {
+	for i := uint64(0); i < page.length; i++ {
 		if page.keys[i].allocated {
 			page.keys[i].value = nil
 		}
@@ -80,14 +52,14 @@ func pageDestroy(db *DB, page *Page) {
 
 }
 
-func pageClone(db *DB, page *Page) *Page {
-	clone := pageCreate(db, page.typ, page.offset, page.config)
+func (page *Page) clone(tree *Tree) *Page {
+	clone := tree.pageCreate(page.typ, page.offset, page.config)
 	clone.isHead = page.isHead
 	clone.length = 0
 
 	for i := 0; i < len(page.keys); i++ {
-		kv := new(KV)
-		kvCopy(page.keys[i], kv, true)
+		kv := KV{}
+		kvCopy(&page.keys[i], &kv, true)
 		clone.keys = append(clone.keys, kv)
 		clone.length ++
 	}
@@ -96,10 +68,7 @@ func pageClone(db *DB, page *Page) *Page {
 }
 
 // 从文件中读取到内存中
-func pageRead(db *DB, page *Page) error {
-	//cast db to writer
-	p := unsafe.Pointer(db)
-	w := (*Writer)(p)
+func (page *Page) read(tree *Tree) error {
 
 	// Read page size and leaf flag
 	size := page.config >> 1
@@ -109,7 +78,7 @@ func pageRead(db *DB, page *Page) error {
 		page.typ = kPage
 	}
 
-	buff, err := writerRead(w, DefaultComp, page.offset, &size)
+	buff, err := tree.writerRead(DefaultComp, page.offset, &size)
 	if err != nil {
 		return err
 	}
@@ -133,19 +102,7 @@ func pageRead(db *DB, page *Page) error {
 	return nil
 }
 
-func pageLoad(db *DB, offset uint64, config uint64) (*Page, error) {
-	newPage := pageCreate(db, kPage, offset, config)
-	if err := pageRead(db, newPage); err != nil {
-		pageDestroy(db, newPage)
-		return nil, err
-	}
-	return newPage, nil
-}
-
-func pageSave(db *DB, page *Page) error {
-	//cast db to writer
-	p := unsafe.Pointer(db)
-	w := (*Writer)(p)
+func (page *Page) save(tree *Tree) error {
 
 	util.Assert(page.typ == kLeaf || page.length != 0,
 		"wrong page type or page.length is 0")
@@ -155,18 +112,18 @@ func pageSave(db *DB, page *Page) error {
 
 	o := uint64(0)
 	for i := uint64(0); i < page.length; i++ {
-		util.Assert(o+kvSize(page.keys[i]) <= page.byteSize,
+		util.Assert(o+kvSize(&page.keys[i]) <= page.byteSize,
 			"no enough buff for page.keys")
 		util.EncodeUint64(buff, 0, page.keys[i].length)
 		util.EncodeUint64(buff, 8, page.keys[i].offset)
 		util.EncodeUint64(buff, 16, page.keys[i].config)
 		copy(buff[24:24+page.keys[i].length], page.keys[i].value)
-		o += kvSize(page.keys[i])
+		o += kvSize(&page.keys[i])
 	}
 
 	util.Assert(o == page.byteSize,
 		"sum of all kv size not equals to page.byteSize")
-	err := writerWrite(w, DefaultComp, buff, &page.offset, &page.config)
+	err := tree.writerWrite(DefaultComp, buff, &page.offset, &page.config)
 	if err != nil {
 		return err
 	}
@@ -179,23 +136,19 @@ func pageSave(db *DB, page *Page) error {
 	return nil
 }
 
-func pageLoadValue(db *DB, page *Page, index uint64, value *Value) error {
-	return valueLoad(db, page.keys[index].offset, page.keys[index].config, value)
-}
-
 type UpdateCallback func(arg []byte, previous *Value, value *Value) error
 
-func pageSaveValue(db *DB, page *Page, index uint64, cmp int, key *Key,
+func (page *Page) saveValue(tree *Tree, index uint64, cmp int, key *Key,
 	value *Value, callback UpdateCallback, arg []byte) error {
 
 	var previous *KV = nil
 	var tmp = new(KV)
 	// replace item with same key from page
-	if cmp == 0 {
+	if cmp == 0 { // cmp >= 0
 		previous = new(KV)
 		if callback != nil {
 			var prevValue Value
-			err := pageLoadValue(db, page, index, &prevValue)
+			err := pageLoadValue(tree, page, index, &prevValue)
 			if err != nil {
 				return err
 			}
@@ -205,26 +158,27 @@ func pageSaveValue(db *DB, page *Page, index uint64, cmp int, key *Key,
 				return EUPDATECONFLICT
 			}
 		}
-		previous.offset = page.keys[index].offset
+		previous.offset = page.keys[index].offset // 记录相同key老数据在文件中的位置和长度
 		previous.length = page.keys[index].length
-		pageRemoveIdx(db, page, index);
+		page.removeIdx(index)
 	}
 
 	tmp.value = key.value
 	tmp.length = key.length
 
-	err := valueSave(db, value, previous, &tmp.offset, &tmp.config)
+	// 插入或替换的数据都是写到文件的末尾，执行compact操作来删除被替换的老数据以减小数据文件的大小
+	err := valueSave(tree, value, previous, &tmp.offset, &tmp.config)
 
 	if err != nil {
 		return err
 	}
 
-	pageShiftr(db, page, index)
+	page.shiftr(index)
 
-	err = kvCopy(tmp, page.keys[index], true)
+	err = kvCopy(tmp, &page.keys[index], true) // keys 为 null
 	if err != nil {
 		// shift keys back
-		pageShiftl(db, page, index)
+		page.shiftl(index)
 		return err
 	}
 	page.byteSize += kvSize(tmp)
@@ -233,23 +187,22 @@ func pageSaveValue(db *DB, page *Page, index uint64, cmp int, key *Key,
 	return nil
 }
 
-func pageSearch(db *DB, page *Page, key *Key, searchType SearchType,
-	result *PageSearchRes) error {
+func (page *Page) search(tree *Tree, key *Key, searchType SearchType, result *PageSearchRes) error {
 
-	util.Assert(page.typ == kLeaf || page.length != 0,
-		"wrong page type or page.length is 0")
+	/*util.Assert(page.typ == kLeaf || page.length > 0,
+		"wrong page type or page.length is 0")*/
 
 	var i uint64 = 0
-	if page.typ == kLeaf {
+	if page.typ == kPage {
 		i = 1
 	}
 
 	cmp := -1
 
 	for i < page.length {
-		p := unsafe.Pointer(page.keys[i])
+		p := unsafe.Pointer(&page.keys[i])
 		k := (*Key)(p)
-		cmp = db.comparaCb(k, key)
+		cmp = tree.comparaCb(k, key)
 
 		if cmp >= 0 {
 			break
@@ -267,8 +220,12 @@ func pageSearch(db *DB, page *Page, key *Key, searchType SearchType,
 	} else {
 		util.Assert(i > 0, "find idx is not  0")
 
+		if cmp != 0 {
+			i --
+		}
+
 		if searchType == kLoad {
-			child, err := pageLoad(db, page.keys[i].offset, page.keys[i].config)
+			child, err := pageLoad(tree, page.keys[i].offset, page.keys[i].config)
 			if err != nil {
 				return err
 			}
@@ -281,9 +238,9 @@ func pageSearch(db *DB, page *Page, key *Key, searchType SearchType,
 	}
 }
 
-func pageGet(db *DB, page *Page, key *Key, value *Value) error {
+func (page *Page) get(tree *Tree, key *Key, value *Value) error {
 	var res PageSearchRes
-	err := pageSearch(db, page, key, DefaultSeachType, &res)
+	err := page.search(tree, key, DefaultSeachType, &res)
 	if err != nil {
 		return err
 	}
@@ -293,10 +250,10 @@ func pageGet(db *DB, page *Page, key *Key, value *Value) error {
 			return ENOTFOUND
 		}
 
-		return pageLoadValue(db, page, res.index, value)
+		return pageLoadValue(tree, page, res.index, value)
 	} else {
-		err := pageGet(db, res.child, key, value)
-		pageDestroy(db, res.child)
+		err := res.child.get(tree, key, value)
+		res.child.destroy()
 		return err
 	}
 
@@ -305,16 +262,16 @@ func pageGet(db *DB, page *Page, key *Key, value *Value) error {
 type FilterCallback func(arg []byte, key *Key) bool
 type RangeCallback func(arg []byte, key *Key, value *Value)
 
-func pageGetRange(db *DB, page *Page, start *Key, end *Key,
-	filter FilterCallback, rangeCb RangeCallback, arg []byte) error {
+func (page *Page) getRange(tree *Tree, start *Key, end *Key, filter FilterCallback, rangeCb RangeCallback,
+	arg []byte) error {
 
 	var startRes, endRes PageSearchRes
-	err := pageSearch(db, page, start, kNotLoad, &startRes)
+	err := page.search(tree, start, kNotLoad, &startRes)
 	if err != nil {
 		return err
 	}
 
-	err = pageSearch(db, page, end, kNotLoad, &endRes)
+	err = page.search(tree, end, kNotLoad, &endRes)
 	if err != nil {
 		return err
 	}
@@ -331,7 +288,7 @@ func pageGetRange(db *DB, page *Page, start *Key, end *Key,
 
 	//go through each page item
 	for i := startRes.index; i <= endRes.index; i++ {
-		p := unsafe.Pointer(page.keys[i])
+		p := unsafe.Pointer(&page.keys[i])
 		key := (*Key)(p)
 		if !filter(arg, key) {
 			continue
@@ -339,24 +296,24 @@ func pageGetRange(db *DB, page *Page, start *Key, end *Key,
 
 		if page.typ == kLeaf {
 
-			child, err := pageLoad(db, page.keys[i].offset, page.keys[i].config)
+			child, err := pageLoad(tree, page.keys[i].offset, page.keys[i].config)
 			if err != nil {
 				return err
 			}
 
-			err = pageGetRange(db, child, start, end, filter, rangeCb, arg)
-			pageDestroy(db, child)
+			err = child.getRange(tree, start, end, filter, rangeCb, arg)
+			child.destroy()
 			if err != nil {
 				return err
 			}
 		} else {
 			var value Value
-			err := pageLoadValue(db, page, i, &value)
+			err := pageLoadValue(tree, page, i, &value)
 			if err != nil {
 				return err
 			}
 
-			p := unsafe.Pointer(page.keys[i])
+			p := unsafe.Pointer(&page.keys[i])
 			key := (*Key)(p)
 			rangeCb(arg, key, &value)
 		}
@@ -365,34 +322,39 @@ func pageGetRange(db *DB, page *Page, start *Key, end *Key,
 	return nil
 }
 
-func pageInsert(db *DB, page *Page, key *Key, value *Value,
-	updataCb UpdateCallback, arg []byte) error {
+func (page *Page) insert(tree *Tree, key *Key, value *Value, updataCb UpdateCallback,
+	arg []byte) error {
 
 	var err error
 	var res PageSearchRes
 
-	err = pageSearch(db, page, key, kLoad, &res)
+	err = page.search(tree, key, kLoad, &res)
 	if err != nil {
 		return err
 	}
 
-	if res.child == nil {
-		// TODO store value in db file to get offset and config ???
-		err = pageSaveValue(db, page, res.index, res.cmp, key, value, updataCb, arg)
+
+	if res.index >= page.length {
+		page.keys = append(page.keys, KV{})
+	}
+
+	if res.child == nil { // 叶子节点
+		// TODO store value in Tree file to get offset and config ???
+		err = page.saveValue(tree, res.index, res.cmp, key, value, updataCb, arg)
 		if err != nil {
 			return err
 		}
 	} else {
 		// Insert kv in child page
-		err = pageInsert(db, res.child, key, value, updataCb, arg)
+		err = res.child.insert(tree, key, value, updataCb, arg)
 		if err == ESPLITPAGE {
-			err = pageSplit(db, page, res.index, res.child)
+			err = page.split(tree, res.index, res.child)
 		} else if err == nil {
 			page.keys[res.index].offset = res.child.offset
 			page.keys[res.index].config = res.child.config
 		}
 
-		pageDestroy(db, res.child)
+		res.child.destroy()
 		res.child = nil
 
 		if err != nil {
@@ -400,9 +362,9 @@ func pageInsert(db *DB, page *Page, key *Key, value *Value,
 		}
 	}
 
-	if page.length == db.header.pageSize {
+	if page.length == tree.header.pageSize {
 		if page.isHead {
-			newHead, err := pageSplitHead(db, page)
+			newHead, err := page.splitHead(tree)
 			if err != nil {
 				return err
 			} else {
@@ -414,26 +376,26 @@ func pageInsert(db *DB, page *Page, key *Key, value *Value,
 
 	}
 
-	util.Assert(page.length < db.header.pageSize,
+	util.Assert(page.length < tree.header.pageSize,
 		"page.length is not smaller than pageSize")
 
-	return pageSave(db, page)
+	return page.save(tree)
 }
 
-func pageBulkInsert(db *DB, page *Page, limit *Key, count *uint64, keys []*Key,
+func (page *Page) bulkInsert(tree *Tree, limit *Key, count *uint64, keys []*Key,
 	values []*Value, updateCb UpdateCallback, arg []byte) error {
 
 	var res PageSearchRes
 	var err error
-	for *count > 0 && (limit == nil || db.comparaCb(limit, keys[0]) > 0 ) {
-		err = pageSearch(db, page, keys[0], kLoad, &res)
+	for *count > 0 && (limit == nil || tree.comparaCb(limit, keys[0]) > 0 ) {
+		err = page.search(tree, keys[0], kLoad, &res)
 		if err != nil {
 			return err
 		}
 
 		if res.child == nil {
-			// store value in db file to get offset and config
-			err = pageSaveValue(db, page, res.index, res.cmp, keys[0], values[0],
+			// store value in Tree file to get offset and config
+			err = page.saveValue(tree, res.index, res.cmp, keys[0], values[0],
 				updateCb, arg)
 			// gnore update conflicts, to handle situations where
 			// only one kv failed in a bulk
@@ -445,20 +407,19 @@ func pageBulkInsert(db *DB, page *Page, limit *Key, count *uint64, keys []*Key,
 		} else { // we're in regular page
 			var newLimit *Key
 			if res.index+1 < page.length {
-				p := unsafe.Pointer(page.keys[res.index+1])
+				p := unsafe.Pointer(&page.keys[res.index+1])
 				newLimit = (*Key)(p)
 			}
-			err = pageBulkInsert(db, res.child, newLimit, count, keys, values,
-				updateCb, arg)
+			err = res.child.bulkInsert(tree, newLimit, count, keys, values, updateCb, arg)
 
 			if err == ESPLITPAGE {
-				err = pageSplit(db, page, res.index, res.child)
+				err = page.split(tree, res.index, res.child)
 			} else if err == nil {
 				page.keys[res.index].offset = res.child.offset
 				page.keys[res.index].config = res.child.config
 			}
 
-			pageDestroy(db, res.child)
+			res.child.destroy()
 			res.child = nil
 
 			if err != nil {
@@ -466,9 +427,9 @@ func pageBulkInsert(db *DB, page *Page, limit *Key, count *uint64, keys []*Key,
 			}
 		}
 
-		if page.length == db.header.pageSize {
+		if page.length == tree.header.pageSize {
 			if page.isHead {
-				newHead, err := pageSplitHead(db, page)
+				newHead, err := page.splitHead(tree)
 				if err != nil {
 					return err
 				} else {
@@ -479,22 +440,21 @@ func pageBulkInsert(db *DB, page *Page, limit *Key, count *uint64, keys []*Key,
 			}
 		}
 
-		util.Assert(page.length < db.header.pageSize,
+		util.Assert(page.length < tree.header.pageSize,
 			"page.length is not smaller than pageSize")
 
 	}
 
-	return pageSave(db, page)
+	return page.save(tree)
 }
 
 type RemoveCallback func(arg []byte, value *Value) error
 
-func pageRemove(db *DB, page *Page, key *Key, removeCb RemoveCallback,
-	arg []byte) error {
+func (page *Page) remove(tree *Tree, key *Key, removeCb RemoveCallback, arg []byte) error {
 
 	var err error
 	var res PageSearchRes
-	err = pageSearch(db, page, key, kLoad, &res)
+	err = page.search(tree, key, kLoad, &res)
 	if err != nil {
 		return err
 	}
@@ -506,7 +466,7 @@ func pageRemove(db *DB, page *Page, key *Key, removeCb RemoveCallback,
 
 		if removeCb != nil {
 			var prevVal Value
-			err = pageLoadValue(db, page, res.index, &prevVal)
+			err = pageLoadValue(tree, page, res.index, &prevVal)
 			if err != nil {
 				return err
 			}
@@ -517,22 +477,22 @@ func pageRemove(db *DB, page *Page, key *Key, removeCb RemoveCallback,
 			}
 		}
 
-		pageRemoveIdx(db, page, res.index)
+		page.removeIdx(res.index)
 
 		if page.length == 0 && !page.isHead {
 			return EEMPTYPAGE
 		}
 	} else {
 		// Insert kv in child page
-		err = pageRemove(db, res.child, key, removeCb, arg)
+		err = res.child.remove(tree, key, removeCb, arg)
 		if err != nil && err != EEMPTYPAGE {
 			return err
 		}
 
 		// kv was inserted but page is full now
 		if err == EEMPTYPAGE {
-			pageRemoveIdx(db, page, res.index)
-			pageDestroy(db, res.child)
+			page.removeIdx(res.index)
+			res.child.destroy()
 			res.child = nil
 
 			// only one item left - lift kv from last child to current page
@@ -541,10 +501,10 @@ func pageRemove(db *DB, page *Page, key *Key, removeCb RemoveCallback,
 				page.config = page.keys[0].config
 
 				// remove child to free memory
-				pageRemoveIdx(db, page, 0)
+				page.removeIdx(0)
 
 				//and load child as current page
-				err = pageRead(db, page)
+				err = page.read(tree)
 				if err != nil {
 					return err
 				}
@@ -554,19 +514,151 @@ func pageRemove(db *DB, page *Page, key *Key, removeCb RemoveCallback,
 			page.keys[res.index].offset = res.child.offset
 			page.keys[res.index].config = res.child.config
 
-			pageDestroy(db, res.child)
+			res.child.destroy()
 			res.child = nil
 		}
 
 	}
 
-	return pageSave(db, page)
+	return page.save(tree)
 }
 
+func (page *Page) split(tree *Tree, index uint64, child *Page) error {
+	var err error
+	left := tree.pageCreate(child.typ, 0, 0)
+	right := tree.pageCreate(child.typ, 0, 0)
+	middle := tree.header.pageSize >> 1
 
-func pageCopy(source *DB, target *DB, page *Page) error {
+	var middleKey KV
+	err = kvCopy(&child.keys[middle], &middleKey, true)
+	if err != nil {
+		return err
+	}
 
-	for i:=uint64(0); i<page.length; i++ {
+	// non-leaf nodes has byte_size > 0 nullify it first
+	var i = uint64(0)
+	left.byteSize = 0
+	left.length = 0
+	left.keys = make([]KV, middle)
+	for ; i < middle; i++ {
+		err = kvCopy(&child.keys[i], &left.keys[left.length], true)
+		if err != nil {
+			goto fatal
+		}
+		left.length ++
+		left.byteSize += kvSize(&child.keys[i])
+	}
+
+	right.byteSize = 0
+	right.length = 0
+	right.keys = make([]KV, tree.header.pageSize-middle)
+	for ; i < tree.header.pageSize; i++ {
+		err = kvCopy(&child.keys[i], &right.keys[right.length], true)
+		if err != nil {
+			goto fatal
+		}
+		right.length ++
+		right.byteSize += kvSize(&child.keys[i])
+	}
+
+	// save left and right parts to get offsets
+	err = left.save(tree)
+	if err != nil {
+		return err
+	}
+	err = right.save(tree)
+	if err != nil {
+		return err
+	}
+
+	// store offsets with middle key
+	middleKey.offset = right.offset
+	middleKey.config = right.config
+
+	// insert middle key into parent page
+
+	page.shiftr(index + 1)
+	kvCopy(&middleKey, &page.keys[index+1], false)
+
+	page.byteSize += kvSize(&middleKey)
+	page.length ++
+
+	// change left element
+	page.keys[index].offset = left.offset
+	page.keys[index].config = left.config
+
+	return nil
+fatal:
+	left.destroy()
+	right.destroy()
+	return err
+}
+
+func (page *Page) splitHead(tree *Tree) (*Page, error) {
+	newHead := tree.pageCreate(0, 0, 0)
+	newHead.isHead = true
+	err := newHead.split(tree,0, page)
+	if err != nil {
+		newHead.destroy()
+		return nil, err
+	}
+
+	tree.header.page = newHead
+	page.destroy()
+
+	return newHead, nil
+}
+
+// 删除index位置的key
+func (page *Page) removeIdx(index uint64) error {
+	util.Assert(index < page.length,
+		"idx is not small than page.length")
+
+	page.byteSize -= kvSize(&page.keys[index])
+	if page.keys[index].allocated {
+		page.keys[index].value = nil
+	}
+
+	// Shift all keys left
+	page.shiftl(index)
+	page.length --
+
+	return nil
+}
+
+func (page *Page) shiftr(index uint64) {
+	if page.length > 0 {
+		for i := page.length - 1; i >= index; i-- {
+			kvCopy(&page.keys[i], &page.keys[i+1], false)
+			if i == 0 {
+				break
+			}
+		}
+	}
+}
+
+func (page *Page) shiftl(index uint64) {
+	for i := index + 1; i < page.length; i++ {
+		kvCopy(&page.keys[i], &page.keys[i-1], false)
+	}
+}
+
+func pageLoad(tree *Tree, offset uint64, config uint64) (*Page, error) {
+	newPage := tree.pageCreate(kPage, offset, config)
+	if err := newPage.read(tree); err != nil {
+		newPage.destroy()
+		return nil, err
+	}
+	return newPage, nil
+}
+
+func pageLoadValue(Tree *Tree, page *Page, index uint64, value *Value) error {
+	return valueLoad(Tree, page.keys[index].offset, page.keys[index].config, value)
+}
+
+func pageCopy(source *Tree, target *Tree, page *Page) error {
+
+	for i := uint64(0); i < page.length; i++ {
 		if page.typ == kPage {
 
 			child, err := pageLoad(source, page.keys[i].offset, page.keys[i].config)
@@ -580,7 +672,7 @@ func pageCopy(source *DB, target *DB, page *Page) error {
 
 			page.keys[i].offset = child.offset
 			page.keys[i].config = child.config
-			pageDestroy(source, child)
+			child.destroy()
 		} else {
 			var value Value
 			err := pageLoadValue(source, page, i, &value)
@@ -598,124 +690,4 @@ func pageCopy(source *DB, target *DB, page *Page) error {
 	}
 
 	return nil
-}
-
-
-func pageSplit(db *DB, parent *Page, index uint64, child *Page) error {
-	var err error
-	left := pageCreate(db, child.typ, 0, 0)
-	right := pageCreate(db, child.typ, 0, 0)
-	middle := db.header.pageSize >> 1
-
-	var middleKey KV
-	err = kvCopy(child.keys[middle], &middleKey, true)
-	if err != nil {
-		return err
-	}
-
-	// non-leaf nodes has byte_size > 0 nullify it first
-	var i = uint64(0)
-	left.byteSize = 0
-	left.length = 0
-	left.keys = make([]*KV, middle)
-	for ; i < middle; i++ {
-		err = kvCopy(child.keys[i], left.keys[left.length], true)
-		if err != nil {
-			goto fatal
-		}
-		left.length ++
-		left.byteSize += kvSize(child.keys[i])
-	}
-
-	right.byteSize = 0
-	right.length = 0
-	right.keys = make([]*KV, db.header.pageSize-middle)
-	for ; i < db.header.pageSize; i++ {
-		err = kvCopy(child.keys[i], right.keys[right.length], true)
-		if err != nil {
-			goto fatal
-		}
-		right.length ++
-		right.byteSize += kvSize(child.keys[i])
-	}
-
-	// save left and right parts to get offsets
-	err = pageSave(db, left)
-	if err != nil {
-		return err
-	}
-	err = pageSave(db, right)
-	if err != nil {
-		return err
-	}
-
-	// store offsets with middle key
-	middleKey.offset = right.offset
-	middleKey.config = right.config
-
-	// insert middle key into parent page
-	pageShiftr(db, parent, index+1)
-	kvCopy(&middleKey, parent.keys[index+1], false)
-
-	parent.byteSize += kvSize(&middleKey)
-	parent.length ++
-
-	// change left element
-	parent.keys[index].offset = left.offset
-	parent.keys[index].config = left.config
-
-	return nil
-fatal:
-	pageDestroy(db, left)
-	pageDestroy(db, right)
-	return err
-}
-
-
-func pageSplitHead(db *DB, page *Page) (*Page, error) {
-	newHead := pageCreate(db, 0, 0, 0)
-	newHead.isHead = true
-	err := pageSplit(db, newHead, 0, page)
-	if err != nil {
-		pageDestroy(db, newHead)
-		return nil, err
-	}
-
-	db.header.page = newHead
-	pageDestroy(db, page)
-
-	return newHead, nil
-}
-
-func pageRemoveIdx(db *DB, page *Page, index uint64) error {
-	util.Assert(index < page.length,
-		"idx is not small than page.length")
-
-	page.byteSize -= kvSize(page.keys[index])
-	if page.keys[index].allocated {
-		page.keys[index].value = nil
-	}
-
-	// Shift all keys left
-	pageShiftl(db, page, index)
-	page.length --
-
-	return nil
-}
-
-func pageShiftr(db *DB, page *Page, index uint64) {
-	if page.length > 0 {
-		for i := page.length - 1; i >= index; i-- {
-			kvCopy(page.keys[i], page.keys[i+1], false)
-			if i == 0 {
-				break
-			}
-		}
-	}
-}
-
-func pageShiftl(db *DB, page *Page, index uint64) {
-	for i := index + 1; i < page.length; i++ {
-		kvCopy(page.keys[i], page.keys[i-1], false)
-	}
 }

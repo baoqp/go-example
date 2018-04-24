@@ -1,13 +1,12 @@
 package bplus_tree
 
 import (
-	"unsafe"
 	"util"
 )
 
-const (
-	HeaderSize = 24
-)
+
+var HeaderSize = uint64(32)
+
 
 //  bp_key_s  bp_key_t
 type Key struct {
@@ -17,8 +16,22 @@ type Key struct {
 	prevLength uint64
 }
 
+func NewKey(key []byte) *Key {
+	return &Key {
+		value : key,
+		length: uint64(len(key)),
+	}
+}
+
 // bp_value_t
 type Value Key
+
+func NewValue(value []byte) *Value{
+	return &Value {
+		value : value,
+		length: uint64(len(value)),
+	}
+}
 
 // bp__kv_s bp__kv_t
 type KV struct {
@@ -48,14 +61,11 @@ func kvCopy(source *KV, target *KV, alloc bool) error {
 	return nil
 }
 
-func valueLoad(db *DB, offset uint64, length uint64, value *Value) error {
-	//cast db to writer
-	p := unsafe.Pointer(db)
-	w := (*Writer)(p)
+func valueLoad(tree *Tree, offset uint64, length uint64, value *Value) error {
 
 	// read data from disk first
 	bufLen := length
-	buff, err := writerRead(w, DefaultComp, offset, &bufLen)
+	buff, err := tree.writerRead(DefaultComp, offset, &bufLen)
 	if err != nil {
 		return err
 	}
@@ -69,12 +79,8 @@ func valueLoad(db *DB, offset uint64, length uint64, value *Value) error {
 	return nil
 }
 
-func valueSave(db *DB, value *Value, previous *KV, offset *uint64,
+func valueSave(tree *Tree, value *Value, previous *KV, offset *uint64,
 	length *uint64) error {
-
-	//cast db to writer
-	p := unsafe.Pointer(db)
-	w := (*Writer)(p)
 
 	buff := make([]byte, value.length+16)
 	if previous != nil {
@@ -88,5 +94,5 @@ func valueSave(db *DB, value *Value, previous *KV, offset *uint64,
 	copy(buff[16: 16+value.length], value.value)
 
 	*length = value.length + 16
-	return writerWrite(w, DefaultComp, buff, offset, length)
+	return tree.writerWrite(DefaultComp, buff, offset, length)
 }

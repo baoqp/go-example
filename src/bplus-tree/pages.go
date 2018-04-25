@@ -3,7 +3,7 @@ package bplus_tree
 import (
 	"unsafe"
 	"util"
-
+	"fmt"
 )
 
 type PageType int
@@ -30,7 +30,7 @@ type Page struct {
 	config   uint64
 	buff     []byte
 	isHead   bool
-	keys     []KV
+	keys     []KV  //指向子节点或数据的指针
 }
 
 type PageSearchRes struct {
@@ -68,12 +68,12 @@ func (page *Page) clone(tree *Tree) *Page {
 	return clone
 }
 
-// 从文件中读取到内存中
+// 从文件反序列化到内存中
 func (page *Page) read(tree *Tree) error {
 
 	// Read page size and leaf flag
 	size := page.config >> 1
-	if page.config & 1 > 0 {
+	if page.config&1 > 0 {
 		page.typ = kLeaf
 	} else {
 		page.typ = kPage
@@ -88,11 +88,18 @@ func (page *Page) read(tree *Tree) error {
 	i := 0
 	o := uint64(0)
 	for ; o < size; {
-		page.keys[i].length = util.DecodeUint64(buff, 0)
-		page.keys[i].offset = util.DecodeUint64(buff, 8)
-		page.keys[i].config = util.DecodeUint64(buff, 16)
-		page.keys[i].value = buff[24:]
+
+		if i >= len(page.keys) {
+			page.keys = append(page.keys, KV{})
+		}
+
+		page.keys[i].length = util.DecodeUint64(buff, int(o+0))
+		page.keys[i].offset = util.DecodeUint64(buff, int(o+8))
+		page.keys[i].config = util.DecodeUint64(buff, int(o+16))
+		page.keys[i].value = buff[int(o+24): int(o+24+page.keys[i].length)]
 		page.keys[i].allocated = false
+
+		o += 24 + page.keys[i].length
 		i++
 	}
 
@@ -104,27 +111,28 @@ func (page *Page) read(tree *Tree) error {
 }
 
 func (page *Page) save(tree *Tree) error {
-
 	util.Assert(page.typ == kLeaf || page.length != 0,
 		"wrong page type or page.length is 0")
 
 	// Allocate space for serialization (header + keys)
 	buff := make([]byte, page.byteSize)
-
+	keys := page.keys
 	o := uint64(0)
 	for i := uint64(0); i < page.length; i++ {
-		util.Assert(o+kvSize(&page.keys[i]) <= page.byteSize,
+		util.Assert(o+kvSize(&keys[i]) <= page.byteSize,
 			"no enough buff for page.keys")
-		util.EncodeUint64(buff, 0, page.keys[i].length)
-		util.EncodeUint64(buff, 8, page.keys[i].offset)
-		util.EncodeUint64(buff, 16, page.keys[i].config)
-		copy(buff[24:24+page.keys[i].length], page.keys[i].value)
-		o += kvSize(&page.keys[i])
+		util.EncodeUint64(buff, int(o+0), keys[i].length)
+		util.EncodeUint64(buff, int(o+8), keys[i].offset)
+		util.EncodeUint64(buff, int(o+16), keys[i].config)
+		copy(buff[int(o+24):int(o+24+page.keys[i].length)], keys[i].value)
+		o += 24 + keys[i].length
 	}
 
 	util.Assert(o == page.byteSize,
 		"sum of all kv size not equals to page.byteSize")
+	page.config = page.byteSize
 	err := tree.writerWrite(DefaultComp, buff, &page.offset, &page.config)
+
 	if err != nil {
 		return err
 	}
@@ -176,12 +184,8 @@ func (page *Page) saveValue(tree *Tree, index uint64, cmp int, key *Key,
 
 	page.shiftr(index)
 
-	err = kvCopy(tmp, &page.keys[index], true) // keys 为 null
-	if err != nil {
-		// shift keys back
-		page.shiftl(index)
-		return err
-	}
+	kvCopy(tmp, &page.keys[index], true) // keys 为 null
+
 	page.byteSize += kvSize(tmp)
 	page.length ++
 
@@ -226,6 +230,7 @@ func (page *Page) search(tree *Tree, key *Key, searchType SearchType, result *Pa
 		}
 
 		if searchType == kLoad {
+			// 加载子页面并在其中搜索
 			child, err := pageLoad(tree, page.keys[i].offset, page.keys[i].config)
 			if err != nil {
 				return err
@@ -333,14 +338,13 @@ func (page *Page) insert(tree *Tree, key *Key, value *Value, updataCb UpdateCall
 		return err
 	}
 
-
-	// cmp != 0 说明有元素插入，需要扩大slice
-	if res.cmp != 0 {
-		page.keys = append(page.keys, KV{})
-	}
-
 	if res.child == nil { // 叶子节点
-		// TODO store value in Tree file to get offset and config ???
+		// cmp != 0 说明有元素插入，需要扩大slice
+		if res.cmp != 0 {
+			page.keys  = append(page.keys, KV{})
+		}
+
+		// store value in Tree file to get offset and config
 		err = page.saveValue(tree, res.index, res.cmp, key, value, updataCb, arg)
 		if err != nil {
 			return err
@@ -364,12 +368,13 @@ func (page *Page) insert(tree *Tree, key *Key, value *Value, updataCb UpdateCall
 	}
 
 	if page.length == tree.header.pageSize {
+
+		fmt.Printf("--need split--- %v \n", value.value)
+
 		if page.isHead {
-			newHead, err := page.splitHead(tree)
+			_, err := page.splitHead(tree)
 			if err != nil {
 				return err
-			} else {
-				*page = *newHead
 			}
 		} else {
 			return ESPLITPAGE
@@ -379,8 +384,9 @@ func (page *Page) insert(tree *Tree, key *Key, value *Value, updataCb UpdateCall
 
 	util.Assert(page.length < tree.header.pageSize,
 		"page.length is not smaller than pageSize")
-
+	// 每次插入数据后，由于page中keys改变了，所以page也要序列化到文件中
 	return page.save(tree)
+
 }
 
 func (page *Page) bulkInsert(tree *Tree, limit *Key, count *uint64, keys []*Key,
@@ -531,10 +537,7 @@ func (page *Page) split(tree *Tree, index uint64, child *Page) error {
 	middle := tree.header.pageSize >> 1
 
 	var middleKey KV
-	err = kvCopy(&child.keys[middle], &middleKey, true)
-	if err != nil {
-		return err
-	}
+	kvCopy(&child.keys[middle], &middleKey, true)
 
 	// non-leaf nodes has byte_size > 0 nullify it first
 	var i = uint64(0)
@@ -542,10 +545,7 @@ func (page *Page) split(tree *Tree, index uint64, child *Page) error {
 	left.length = 0
 	left.keys = make([]KV, middle)
 	for ; i < middle; i++ {
-		err = kvCopy(&child.keys[i], &left.keys[left.length], true)
-		if err != nil {
-			goto fatal
-		}
+		kvCopy(&child.keys[i], &left.keys[left.length], true)
 		left.length ++
 		left.byteSize += kvSize(&child.keys[i])
 	}
@@ -553,11 +553,8 @@ func (page *Page) split(tree *Tree, index uint64, child *Page) error {
 	right.byteSize = 0
 	right.length = 0
 	right.keys = make([]KV, tree.header.pageSize-middle)
-	for ; i < tree.header.pageSize; i++ {
-		err = kvCopy(&child.keys[i], &right.keys[right.length], true)
-		if err != nil {
-			goto fatal
-		}
+	for i = middle; i < tree.header.pageSize; i++ {
+		kvCopy(&child.keys[i], &right.keys[right.length], true)
 		right.length ++
 		right.byteSize += kvSize(&child.keys[i])
 	}
@@ -577,7 +574,7 @@ func (page *Page) split(tree *Tree, index uint64, child *Page) error {
 	middleKey.config = right.config
 
 	// insert middle key into parent page
-
+	page.keys = append(page.keys, KV{})
 	page.shiftr(index + 1)
 	kvCopy(&middleKey, &page.keys[index+1], false)
 
@@ -589,22 +586,19 @@ func (page *Page) split(tree *Tree, index uint64, child *Page) error {
 	page.keys[index].config = left.config
 
 	return nil
-fatal:
-	left.destroy()
-	right.destroy()
-	return err
+
 }
 
 func (page *Page) splitHead(tree *Tree) (*Page, error) {
 	newHead := tree.pageCreate(0, 0, 0)
 	newHead.isHead = true
-	err := newHead.split(tree,0, page)
+	err := newHead.split(tree, 0, page)
 	if err != nil {
 		newHead.destroy()
 		return nil, err
 	}
 
-	tree.header.page = newHead
+	*tree.header.page = *newHead
 	page.destroy()
 
 	return newHead, nil

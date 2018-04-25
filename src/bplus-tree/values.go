@@ -2,12 +2,11 @@ package bplus_tree
 
 import (
 	"util"
-	"fmt"
 )
 
 
 var HeaderSize = uint64(32)
-
+var KVHeaderSize = uint64(24)
 
 //  bp_key_s  bp_key_t
 type Key struct {
@@ -36,18 +35,18 @@ func NewValue(value []byte) *Value{
 
 // bp__kv_s bp__kv_t
 type KV struct {
-	length    uint64
+	length    uint64  // 数据长度
 	value     []byte
-	offset    uint64
+	offset    uint64  // 在文件中的offset
 	config    uint64
 	allocated bool
 }
 
 func kvSize(kv *KV) uint64 {
-	return HeaderSize + kv.length
+	return KVHeaderSize + kv.length
 }
 
-func kvCopy(source *KV, target *KV, alloc bool) error {
+func kvCopy(source *KV, target *KV, alloc bool) {
 	if alloc {
 		target.value = make([]byte, len(source.value))
 		copy(target.value, source.value)
@@ -59,7 +58,6 @@ func kvCopy(source *KV, target *KV, alloc bool) error {
 	target.offset = source.offset
 	target.config = source.config
 
-	return nil
 }
 
 func valueLoad(tree *Tree, offset uint64, length uint64, value *Value) error {
@@ -67,9 +65,6 @@ func valueLoad(tree *Tree, offset uint64, length uint64, value *Value) error {
 	// read data from disk first
 	bufLen := length
 	buff, err := tree.writerRead(DefaultComp, offset, &bufLen)
-
-	fmt.Println("read value")
-	fmt.Println(buff)
 
 	if err != nil {
 		return err
@@ -99,9 +94,6 @@ func valueSave(tree *Tree, value *Value, previous *KV, offset *uint64,
 	}
 
 	copy(buff[16: 16+value.length], value.value)
-
-	fmt.Println("write value")
-	fmt.Println(buff)
 
 	*length = value.length + 16
 	return tree.writerWrite(DefaultComp, buff, offset, length)

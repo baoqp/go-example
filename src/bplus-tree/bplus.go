@@ -2,13 +2,14 @@ package bplus_tree
 
 import (
 	"sync"
-
 	"github.com/pkg/errors"
 	"util"
-	"fmt"
+	"strconv"
 )
 
 const PADDING = 64
+
+const PageSize = 6
 
 type ComparaCallback func(a *Key, b *Key) int
 
@@ -39,19 +40,16 @@ const (
 	DefaultComp    CompType = kNotCompressed
 )
 
-
-
 func (t *Tree) init() error {
 	//  Load head.
 	err := t.writerFind(kNotCompressed, HeaderSize,
-		 nil, treeReadHead, treeWriteHead)
+		nil, treeReadHead, treeWriteHead)
 
 	if err == nil {
 		t.comparaCb = defaultCompareCb
 	}
 	return err
 }
-
 
 func (t *Tree) get(key *Key, value *Value) error {
 	t.rmLock.RLock()
@@ -70,19 +68,16 @@ func (t *Tree) getPrevious(value *Value, previous *Value) error {
 	return err
 }
 
-
 func (t *Tree) update(key *Key, value *Value, updateCb UpdateCallback, arg []byte) error {
 	var err error
 	t.rmLock.Lock()
 	err = t.header.page.insert(t, key, value, updateCb, arg)
-	if err == nil { // TODO
+	if err == nil {
 		err = treeWriteHead(t, nil)
 	}
 	t.rmLock.Unlock()
 	return err
 }
-
-
 
 func (t *Tree) bulkUpdate(count uint64, keys []*Key, values []*Value, updateCb UpdateCallback, arg []byte) error {
 	var err error
@@ -95,8 +90,6 @@ func (t *Tree) bulkUpdate(count uint64, keys []*Key, values []*Value, updateCb U
 	t.rmLock.Unlock()
 	return err
 }
-
-
 
 func (t *Tree) remove(key *Key, removeCb RemoveCallback, arg []byte) error {
 	var err error
@@ -115,13 +108,12 @@ func (t *Tree) compact() error {
 	return nil
 }
 
-
 func (t *Tree) getFilteredRange(start *Key, end *Key, callback FilterCallback,
 	rangeCallback RangeCallback, arg []byte) error {
 
 	var err error
 	t.rmLock.Lock()
-	err = t.header.page.getRange(t,start, end, callback, rangeCallback, arg)
+	err = t.header.page.getRange(t, start, end, callback, rangeCallback, arg)
 	t.rmLock.Unlock()
 	return err
 }
@@ -129,7 +121,6 @@ func (t *Tree) getFilteredRange(start *Key, end *Key, callback FilterCallback,
 func defaultFilterCallback(arg []byte, key *Key) bool {
 	return true
 }
-
 
 func (t *Tree) getRange(start *Key, end *Key,
 	rangeCallback RangeCallback, arg []byte) error {
@@ -165,7 +156,7 @@ func (t *Tree) pageCreate(typ PageType, offset uint64, config uint64) *Page {
 	page.config = config
 	page.buff = nil
 	page.isHead = false
-	return page
+ 	return page
 }
 
 func treeReadHead(t *Tree, data []byte) error {
@@ -174,15 +165,13 @@ func treeReadHead(t *Tree, data []byte) error {
 	t.header.config = util.DecodeUint64(data, 8)
 	t.header.pageSize = util.DecodeUint64(data, 16)
 	t.header.hash = util.DecodeUint64(data, 24)
-	fmt.Println("treeReadHead")
-	fmt.Println(t.header)
-
 	data = data[:0]
 
 	if computeHashl(t.header.offset) != t.header.hash {
 		return errors.New("hash inconsistent ")
 	}
 
+	// 载入b+树的根
 	t.header.page, err = pageLoad(t, t.header.offset, t.header.config)
 	if err != nil {
 		return err
@@ -194,7 +183,7 @@ func treeReadHead(t *Tree, data []byte) error {
 func treeWriteHead(t *Tree, data []byte) error {
 
 	if t.header.page == nil {
-		t.header.pageSize = 64
+		t.header.pageSize = PageSize
 		t.header.page = t.pageCreate(kLeaf, 0, 1)
 		t.header.page.isHead = true
 	}
@@ -209,16 +198,32 @@ func treeWriteHead(t *Tree, data []byte) error {
 	util.EncodeUint64(buff, 16, t.header.pageSize)
 	util.EncodeUint64(buff, 24, t.header.hash)
 
-	fmt.Println("treeWriteHead")
-	fmt.Println(t.header)
-
 	size := uint64(HeaderSize)
 	var offset uint64
 	return t.writerWrite(kNotCompressed, buff, &offset, &size)
 }
 
 func defaultCompareCb(a *Key, b *Key) int {
-	var len uint64
+
+	value1 := string(a.value)
+	value2 := string(b.value)
+
+	int1  , _ := strconv.ParseInt(value1, 10, 64)
+	int2  , _ := strconv.ParseInt(value2, 10, 64)
+
+	if int1 == int2 {
+		return 0
+	} else {
+		if int1 > int2  {
+			return 1
+		} else {
+			return -1
+		}
+
+	}
+
+
+	/*var len uint64
 
 	if a.length < b.length {
 		len = a.length
@@ -245,6 +250,6 @@ func defaultCompareCb(a *Key, b *Key) int {
 		return -1
 	}
 
-	return 0
+	return 0*/
 
 }

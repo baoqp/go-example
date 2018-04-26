@@ -3,7 +3,6 @@ package bplus_tree
 import (
 	"unsafe"
 	"util"
-	"fmt"
 )
 
 type PageType int
@@ -30,7 +29,7 @@ type Page struct {
 	config   uint64
 	buff     []byte
 	isHead   bool
-	keys     []KV  //指向子节点或数据的指针
+	keys     []KV // 指向子节点或数据的指针
 }
 
 type PageSearchRes struct {
@@ -39,18 +38,19 @@ type PageSearchRes struct {
 	cmp   int
 }
 
-// TODO 可以考虑采用对象池来缓冲page对象，避免频繁创建对象
 func (page *Page) destroy() {
-	for i := uint64(0); i < page.length; i++ {
-		if page.keys[i].allocated {
-			page.keys[i].value = nil
+	if len(page.keys) > 0 {
+		for _, key := range page.keys {
+			if key.allocated {
+				key.value = key.value[:0]
+			}
 		}
+		page.keys = page.keys[:0]
 	}
 
-	if page.buff != nil {
-		page.buff = nil
+	if len(page.buff) > 0 {
+		page.buff = page.buff[:0]
 	}
-
 }
 
 func (page *Page) clone(tree *Tree) *Page {
@@ -194,8 +194,8 @@ func (page *Page) saveValue(tree *Tree, index uint64, cmp int, key *Key,
 
 func (page *Page) search(tree *Tree, key *Key, searchType SearchType, result *PageSearchRes) error {
 
-	/*util.Assert(page.typ == kLeaf || page.length > 0,
-		"wrong page type or page.length is 0")*/
+	util.Assert(page.typ == kLeaf || page.length > 0,
+		"wrong page type or page.length is 0")
 
 	var i uint64 = 0
 	if page.typ == kPage {
@@ -239,7 +239,7 @@ func (page *Page) search(tree *Tree, key *Key, searchType SearchType, result *Pa
 		} else {
 			result.child = nil
 		}
-
+		result.index = i
 		return nil
 	}
 }
@@ -341,7 +341,7 @@ func (page *Page) insert(tree *Tree, key *Key, value *Value, updataCb UpdateCall
 	if res.child == nil { // 叶子节点
 		// cmp != 0 说明有元素插入，需要扩大slice
 		if res.cmp != 0 {
-			page.keys  = append(page.keys, KV{})
+			page.keys = append(page.keys, KV{})
 		}
 
 		// store value in Tree file to get offset and config
@@ -367,10 +367,13 @@ func (page *Page) insert(tree *Tree, key *Key, value *Value, updataCb UpdateCall
 		}
 	}
 
+	err = page.save(tree)
+	if err != nil {
+		return err
+	}
+
+	// 子节点分裂时会在父节点插入一个key, 此时父节点也可能变满，需要再次判断
 	if page.length == tree.header.pageSize {
-
-		fmt.Printf("--need split--- %v \n", value.value)
-
 		if page.isHead {
 			_, err := page.splitHead(tree)
 			if err != nil {
@@ -385,7 +388,7 @@ func (page *Page) insert(tree *Tree, key *Key, value *Value, updataCb UpdateCall
 	util.Assert(page.length < tree.header.pageSize,
 		"page.length is not smaller than pageSize")
 	// 每次插入数据后，由于page中keys改变了，所以page也要序列化到文件中
-	return page.save(tree)
+	return nil
 
 }
 
@@ -506,7 +509,6 @@ func (page *Page) remove(tree *Tree, key *Key, removeCb RemoveCallback, arg []by
 			if page.length == 1 {
 				page.offset = page.keys[0].offset
 				page.config = page.keys[0].config
-
 				// remove child to free memory
 				page.removeIdx(0)
 
@@ -524,7 +526,6 @@ func (page *Page) remove(tree *Tree, key *Key, removeCb RemoveCallback, arg []by
 			res.child.destroy()
 			res.child = nil
 		}
-
 	}
 
 	return page.save(tree)
@@ -586,7 +587,6 @@ func (page *Page) split(tree *Tree, index uint64, child *Page) error {
 	page.keys[index].config = left.config
 
 	return nil
-
 }
 
 func (page *Page) splitHead(tree *Tree) (*Page, error) {
@@ -598,8 +598,9 @@ func (page *Page) splitHead(tree *Tree) (*Page, error) {
 		return nil, err
 	}
 
-	*tree.header.page = *newHead
 	page.destroy()
+	*tree.header.page = *newHead
+	*page = *newHead
 
 	return newHead, nil
 }

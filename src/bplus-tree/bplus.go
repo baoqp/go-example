@@ -73,7 +73,7 @@ func (t *Tree) update(key *Key, value *Value, updateCb UpdateCallback, arg []byt
 	t.rmLock.Lock()
 	err = t.header.page.insert(t, key, value, updateCb, arg)
 	if err == nil {
-		err = treeWriteHead(t, nil)
+		err = treeWriteHead(t, nil) // TODO 待优化，不是每次都要重写Header
 	}
 	t.rmLock.Unlock()
 	return err
@@ -105,6 +105,10 @@ func (t *Tree) remove(key *Key, removeCb RemoveCallback, arg []byte) error {
 
 // TODO
 func (t *Tree) compact() error {
+
+
+
+
 	return nil
 }
 
@@ -139,7 +143,7 @@ func (t *Tree) pageCreate(typ PageType, offset uint64, config uint64) *Page {
 		page.length = 0
 		page.byteSize = 0
 	} else {
-		// TODO non-leaf pages always have left element ???
+		// non-leaf pages always have one left-most element
 		page.length = 1
 		kv := KV{
 			value:     nil,

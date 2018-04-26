@@ -76,8 +76,6 @@ func valueLoad(tree *Tree, offset uint64, length uint64, value *Value) error {
 	copy(value.value, buff[16:])
 	value.length = bufLen - 16
 
-
-
 	return nil
 }
 

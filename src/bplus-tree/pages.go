@@ -264,8 +264,8 @@ func (page *Page) get(tree *Tree, key *Key, value *Value) error {
 type FilterCallback func(arg []byte, key *Key) bool
 type RangeCallback func(arg []byte, key *Key, value *Value)
 
-func (page *Page) getRange(tree *Tree, start *Key, end *Key, filter FilterCallback, rangeCb RangeCallback,
-	arg []byte) error {
+func (page *Page) getRange(tree *Tree, start *Key, end *Key, filter FilterCallback,
+	rangeCb RangeCallback, arg []byte) error {
 
 	var startRes, endRes PageSearchRes
 	err := page.search(tree, start, kNotLoad, &startRes)
@@ -296,7 +296,7 @@ func (page *Page) getRange(tree *Tree, start *Key, end *Key, filter FilterCallba
 			continue
 		}
 
-		if page.typ == kLeaf {
+		if page.typ == kPage {
 
 			child, err := pageLoad(tree, page.keys[i].offset, page.keys[i].config)
 			if err != nil {

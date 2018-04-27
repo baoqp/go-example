@@ -68,6 +68,15 @@ func TestApi(t *testing.T) {
 		fmt.Printf("%s -> %s \n", key, string(data))
 	}
 
+	var rangeValues []string
+	var rangeCb RangeCallback = func (arg []byte, key *Key, value *Value) {
+		rangeValues = append(rangeValues, string(value.value))
+	}
+	start := fmt.Sprintf("%d", 1)
+	end := fmt.Sprintf("%d", 3)
+	tree.GetRange([]byte(start), []byte(end), rangeCb, nil)
+	fmt.Println(rangeValues)
+
 }
 
 

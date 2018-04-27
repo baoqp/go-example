@@ -66,8 +66,8 @@ func (t *Tree) GetFilteredRange(start []byte, end []byte, callback FilterCallbac
 	return t.getFilteredRange(Start, End, callback, rangeCallback, arg)
 }
 
-func (t *Tree) GetRange(start []byte, end []byte, callback FilterCallback,
-	rangeCallback RangeCallback, arg []byte) error {
+func (t *Tree) GetRange(start []byte, end []byte, rangeCallback RangeCallback,
+	arg []byte) error {
 
 	Start := NewKey(start)
 	End := NewKey(end)

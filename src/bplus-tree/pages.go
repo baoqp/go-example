@@ -56,13 +56,10 @@ func (page *Page) destroy() {
 func (page *Page) clone(tree *Tree) *Page {
 	clone := tree.pageCreate(page.typ, page.offset, page.config)
 	clone.isHead = page.isHead
-	clone.length = 0
-
-	for i := 0; i < len(page.keys); i++ {
-		kv := KV{}
-		kvCopy(&page.keys[i], &kv, true)
-		clone.keys = append(clone.keys, kv)
-		clone.length ++
+	clone.length = page.length
+	clone.keys = make([]KV, clone.length)
+	for i := 0; i < int(page.length); i++ {
+		kvCopy(&page.keys[i], &clone.keys[i], true)
 	}
 	clone.byteSize = page.byteSize
 	return clone
@@ -687,5 +684,5 @@ func pageCopy(source *Tree, target *Tree, page *Page) error {
 		}
 	}
 
-	return nil
+	return page.save(target)
 }

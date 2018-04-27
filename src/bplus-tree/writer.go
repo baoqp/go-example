@@ -9,18 +9,52 @@ import (
 )
 
 type Writer struct {
-	file     *os.File
-	fileName string
-	fileSize uint64
-	padding  [PADDING]byte // TODO
+	file         *os.File
+	originalName string
+	fileName     string
+	compactName  string
+	fileSize     uint64
+	padding      [PADDING]byte // TODO
 }
 
-func (t *Tree) creatreWriter(fileName string) (*Writer, error) {
-	writer := new(Writer)
-	writer.fileName = fileName
-
+func (t *Tree) creatreWriter(fileName string, isCompact bool) (*Writer, error) {
 	var err error
-	writer.file, err = os.OpenFile(fileName,
+	fileName1 := fmt.Sprintf("%s.%d", fileName, 1)
+	fileName2 := fmt.Sprintf("%s.%d", fileName, 2)
+
+	file1Exists, err := util.Exists(fileName1)
+	if err != nil {
+		return nil, err
+	}
+	file2Exists, err := util.Exists(fileName2)
+	if err != nil {
+		return nil, err
+	}
+
+	writer := new(Writer)
+	writer.originalName = fileName
+	if !file1Exists && !file2Exists {
+		writer.fileName = fileName1
+		writer.compactName = fileName2
+	} else if file2Exists && file1Exists {
+		return nil, errors.New("db file and compact file is not allowd exists both")
+	} else if file1Exists {
+		writer.fileName = fileName1
+		writer.compactName = fileName2
+		if isCompact {
+			writer.fileName = fileName2
+			writer.compactName = fileName1
+		}
+	} else {
+		writer.fileName = fileName2
+		writer.compactName = fileName1
+		if isCompact {
+			writer.fileName = fileName1
+			writer.compactName = fileName2
+		}
+	}
+
+	writer.file, err = os.OpenFile(writer.fileName,
 		os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, EFILE
@@ -38,8 +72,12 @@ func (t *Tree) creatreWriter(fileName string) (*Writer, error) {
 	return writer, nil
 }
 
-func (t *Tree) destroyWriter() {
-	t.Writer.file.Close()
+func (t *Tree) destroyWriter() error {
+	return t.Writer.file.Close()
+}
+
+func (t *Tree) deleteTreeFile() error {
+	return os.Remove(t.Writer.fileName)
 }
 
 // linux使用 syscall.Fdatasync(int(Tree.file.Fd()))
@@ -94,7 +132,6 @@ func (t *Tree) writerRead(compType CompType, offset uint64,
 		return nil, errors.New("not support yet")
 
 	}
-
 
 }
 

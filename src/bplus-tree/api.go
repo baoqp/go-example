@@ -1,23 +1,8 @@
 package bplus_tree
 
 func Open(filename string) (*Tree, error) {
-	var err error
-
-	tree := new(Tree)
-	tree.header = new(TreeHeader)
-
-	tree.rmLock.Lock()
-	tree.Writer, err = tree.creatreWriter(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	tree.header.page = nil
-	err = tree.init()
-	tree.rmLock.Unlock()
-	return tree, err
+	return open(filename, false)
 }
-
 
 func (t *Tree) Close() error {
 	t.rmLock.Lock()
@@ -29,7 +14,6 @@ func (t *Tree) Close() error {
 	return nil
 }
 
-
 func (t *Tree) Get(key []byte) ([]byte, error) {
 	Key := NewKey(key)
 	var Value Value
@@ -40,16 +24,11 @@ func (t *Tree) Get(key []byte) ([]byte, error) {
 	return Value.value, nil
 }
 
-
-
 func (t *Tree) Update(key []byte, value []byte, updateCb UpdateCallback, arg []byte) error {
 	Key := NewKey(key)
 	Value := NewValue(value)
 	return t.update(Key, Value, updateCb, arg)
 }
-
-
-
 
 func (t *Tree) BulkUpdate(count uint64, keys [][]byte, values [][]byte, updateCb UpdateCallback, arg []byte) error {
 	var Keys []*Key
@@ -65,8 +44,6 @@ func (t *Tree) BulkUpdate(count uint64, keys [][]byte, values [][]byte, updateCb
 	return t.bulkUpdate(count, Keys, Values, updateCb, arg)
 }
 
-
-
 func (t *Tree) Set(key []byte, value []byte) error {
 	return t.Update(key, value, nil, nil)
 }
@@ -80,7 +57,6 @@ func (t *Tree) Remove(key []byte, removeCb RemoveCallback, arg []byte) error {
 	return t.remove(Key, removeCb, arg)
 }
 
-
 func (t *Tree) GetFilteredRange(start []byte, end []byte, callback FilterCallback,
 	rangeCallback RangeCallback, arg []byte) error {
 
@@ -89,8 +65,6 @@ func (t *Tree) GetFilteredRange(start []byte, end []byte, callback FilterCallbac
 
 	return t.getFilteredRange(Start, End, callback, rangeCallback, arg)
 }
-
-
 
 func (t *Tree) GetRange(start []byte, end []byte, callback FilterCallback,
 	rangeCallback RangeCallback, arg []byte) error {

@@ -4,7 +4,8 @@ import (
 	"sync"
 	"github.com/pkg/errors"
 	"util"
-	"strconv"
+	"os"
+	"fmt"
 )
 
 const PADDING = 64
@@ -39,6 +40,25 @@ const (
 	kCompressed    CompType = 1
 	DefaultComp    CompType = kNotCompressed
 )
+
+
+func open(filename string, isCompact bool) (*Tree, error) {
+	var err error
+
+	tree := new(Tree)
+	tree.header = new(TreeHeader)
+
+	tree.rmLock.Lock()
+	tree.Writer, err = tree.creatreWriter(filename, isCompact)
+	if err != nil {
+		return nil, err
+	}
+
+	tree.header.page = nil
+	err = tree.init()
+	tree.rmLock.Unlock()
+	return tree, err
+}
 
 func (t *Tree) init() error {
 	//  Load head.
@@ -103,11 +123,61 @@ func (t *Tree) remove(key *Key, removeCb RemoveCallback, arg []byte) error {
 
 }
 
-// TODO
+// 把原来的树的各个节点一次读出来写入新的文件中
 func (t *Tree) compact() error {
+	var err error
 
+	compactName := t.compactName
+	compactExists, err := util.Exists(compactName)
+	if err != nil{
+		return err
+	}
+	if compactExists {
+		err = os.Remove(compactName)
+		if err != nil {
+			return err
+		}
+	}
 
+	compacted, err := open(t.originalName, true)
+	if err != nil {
+		return err
+	}
+	util.Assert(compacted.fileName == compactName,
+		fmt.Sprintf("compact file name mismatch, %s = %s", compacted.fileName, compactName))
 
+	if compacted.header.page != nil {
+		compacted.header.page.destroy()
+	}
+
+	t.rmLock.RLock()
+	compacted.header.page = t.header.page.clone(compacted)
+
+	err = pageCopy(t, compacted, compacted.header.page)
+	if err != nil {
+		return err
+	}
+
+	err = treeWriteHead(compacted, nil)
+	if err != nil {
+		return err
+	}
+
+	err = t.destroyWriter()
+	if err != nil {
+		return err
+	}
+
+	err = t.deleteTreeFile()
+	if err != nil {
+		return err
+	}
+
+	t.header.page.destroy()
+	t.Writer = compacted.Writer
+	t.header = compacted.header
+
+	t.rmLock.RUnlock()
 
 	return nil
 }
@@ -209,25 +279,10 @@ func treeWriteHead(t *Tree, data []byte) error {
 
 func defaultCompareCb(a *Key, b *Key) int {
 
-	value1 := string(a.value)
-	value2 := string(b.value)
-
-	int1  , _ := strconv.ParseInt(value1, 10, 64)
-	int2  , _ := strconv.ParseInt(value2, 10, 64)
-
-	if int1 == int2 {
-		return 0
-	} else {
-		if int1 > int2  {
-			return 1
-		} else {
-			return -1
-		}
-
-	}
 
 
-	/*var len uint64
+
+	var len uint64
 
 	if a.length < b.length {
 		len = a.length
@@ -254,6 +309,6 @@ func defaultCompareCb(a *Key, b *Key) int {
 		return -1
 	}
 
-	return 0*/
+	return 0
 
 }

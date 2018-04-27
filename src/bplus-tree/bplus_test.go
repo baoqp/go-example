@@ -90,3 +90,37 @@ func TestBench(t *testing.T) {
 }
 
 
+func TestCompact(t *testing.T) {
+
+	tree, _ := Open("tree.bp")
+
+	for i := 1000; i <= 10000; i++ {
+		key := fmt.Sprintf("key-%d", i)
+		value := fmt.Sprintf("value%d", i)
+		tree.Set([]byte(key), []byte(value))
+	}
+
+
+	for i := 1000; i <= 1050; i++ {
+		key := fmt.Sprintf("key-%d", i)
+		data, _ := tree.Get([]byte(key))
+		fmt.Printf("%s -> %s \n", key, string(data))
+	}
+	fmt.Println()
+
+	err := tree.compact()
+	if err != nil {
+		panic(err)
+	}
+
+
+	for i := 1000; i <= 1050; i++ {
+		key := fmt.Sprintf("key-%d", i)
+		data, _ := tree.Get([]byte(key))
+		fmt.Printf("%s -> %s \n", key, string(data))
+	}
+	fmt.Println()
+
+
+}
+

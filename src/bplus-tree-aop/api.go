@@ -1,4 +1,4 @@
-package bplus_tree
+package bplus_tree_aop
 
 func Open(filename string) (*Tree, error) {
 	return open(filename, false)

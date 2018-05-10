@@ -1,0 +1,45 @@
+syntax = "proto2";
+package metapb;
+
+
+enum StoreState {
+    UP = 0;
+    Down = 1;
+    Tombstone = 2;
+}
+
+message Label {
+    optional string key = 1;
+    optional string value = 2;
+}
+
+message Cluster {
+    optional uint64 id = 1;
+    optional uint32 maxReplicas = 2;
+}
+
+message Peer {
+    optional uint64 id = 1;
+    optional uint64 storeID = 2;
+}
+
+message CellEpoch {
+    optional uint64 confVer = 1;
+    optional uint64 cellVer = 2;
+}
+
+message Cell {
+    optional uint64 id = 1;
+    optional bytes start = 2;
+    optional bytes end = 3;
+    optional CellEpoch epoch = 4;
+    repeated Peer peers = 5;
+}
+
+message Store {
+    optional uint64 id = 1;
+    optional string address = 2;
+    repeated Label lables = 3;
+    optional StoreState state = 4;
+    optional string clientAddress = 5;
+}

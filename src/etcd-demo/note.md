@@ -5,9 +5,8 @@
 
 etcd提供的raft库只负责把消息保存在内存中，需要自行实现网络传输层以完成消息的发送和接收
 
-raft提供了Ready结构体，其中封装了只读的entry和message, 可以持久化到存储或提交
-或发送给其他peer，具体包括以下部分：
-- pb.HardState：包含当前节点见过的最大的term，以及在这个term给谁投过票，已经当前节点知道的commit index
+raft提供了Ready结构体，其中封装了只读的entry和message, 可以持久化到存储或提交或发送给其他peer，具体包括以下部分：
+- pb.HardState：包含当前节点见过的最大的term，以及在该term的投票，当前的commit index
 - Messages: 需要广播给所有peers的消息
 - CommittedEntries：已经commit但还未apply到状态机的日志
 - Snapshot：需要持久化的快照
@@ -56,16 +55,15 @@ type Ready struct {
 
 应用需要对Ready的处理包括:
 - 将HardState, Entries, Snapshot持久化到storage。
-- 将Messages(上文提到的msgs)非阻塞的广播给其他peers
-- 将CommittedEntries(已经commit还没有apply)应用到状态机。
+- 将Messages非阻塞地广播给其他peers
+- 将CommittedEntries应用到状态机。
 - 如果发现CommittedEntries中有成员变更类型的entry，调用node的ApplyConfChange()进行通知
 - 调用Node.Advance()告诉raft node，这批状态更新处理完了，可以处理下一批更新了。
 
-应用通过raft.StartNode()来启动raft中的一个副本，函数内部通过启动一个goroutine运行
+应用通过raft.StartNode()来启动raft中的一个副本，函数内部通过启动一个goroutine运行run方法来启动服务。
 ```go
 func (n *node) run(r *raft)
 ```
-来启动服务。
 
 
 通过调用Propose方法向raft提交请求
@@ -98,7 +96,7 @@ type node struct {
 }
 ```
 
-- propc: propc是一个没有buffer的channel，应用通过Propose方法写入的请求被封装成Message被push到propc中，
+- propc: propc是一个没有buffer的channel，应用通过Propose方法写入的请求被封装成Message然后push到propc中，
 node的run方法从propc中取出Message，append到自己的raft log中，并且将Message放入mailbox中(raft结构体中的msgs []pb.Message)，
 这个msgs会被封装在Ready中，被应用从readyc中取出来，然后通过应用自定义的transport发送出去。
 
@@ -184,5 +182,71 @@ Follower节点的raft内部状态机会将unstable log中的snapshot信息放在
 
 http://int64.me/2017/Leader%20Transfer%20In%20TiKV.html
 
+
+### Linearizable Read---ReadIndex Read
+
+Linearizable Read, 通俗地讲就是读请求需要读到最新的已经commit的数据，不会读到老数据。
+现实系统中，读请求通常会占很大比重，如果每次读请求都要走一次raft落盘，性能会大打折扣。
+
+从raft协议可知，leader拥有最新的状态，如果读请求都走leader，那么leader可以直接返回结果给客户端。
+然而，在出现网络分区和时钟快慢相差比较大的情况下，有可能会返回老的数据，即stale read。例如，leader
+和其他followers之间出现网络分区，其他followers已经选出了新的leader，并且新的leader已经commit了一堆数据，
+然而由于不同机器的时钟走的快慢不一，原来的leader可能并没有发觉自己的lease过期，仍然认为自己还是合法的
+leader直接给客户端返回结果，从而导致了stale read。
+
+Raft作者提出了一种叫做ReadIndex的方案：
+当leader接收到读请求时，将当前commit index记录下来，记作read index，在返回结果给客户端之前，leader需要
+先确定自己到底还是不是真的leader，确定的方法就是给其他所有peers发送一次心跳，如果收到了多数派的响应，
+说明至少这个读请求到达这个节点时，这个节点仍然是leader，这时只需要等到commit index被apply到状态机后，
+即可返回结果。
+
+```go
+func (n *node) ReadIndex(ctx context.Context, rctx []byte) error {
+    return n.step(ctx, pb.Message{Type: pb.MsgReadIndex, Entries: []pb.Entry{{Data: rctx}}})
+}
+```
+处理读请求时，应用的goroutine会调用这个函数，其中rctx参数相当于读请求id，全局保证唯一。step会往recvc中塞进一个MsgReadIndex消息，
+而运行node入口函数run()的goroutine会从recvc中拿出这个message，并进行处理：
+```
+case m := <-n.recvc:
+    // filter out response message from unknown From.
+    if _, ok := r.prs[m.From]; ok || !IsResponseMsg(m.Type) {
+        r.Step(m) // raft never returns an error
+    }
+```            
+Step(m)最终会调用到raft结构体的step(m)，step是个函数指针，根据node的角色，运行stepLeader()/stepFollower()/stepCandidate()。
+
+其中StepLeader的主要流程是
+1.leader check自己是否在当前term commit过entry
+2.leader会封装当前commit index和请求并保存到r.readOnly当中，然后给所有peers发心跳广播
+3.当收到多数派响应时，再从r.readOnly中取出并以此新建一个ReadState结构体示例保存到readStates数组，
+  而readStates数组会被包含在Ready结构体中
+4.消费Ready的方法中会把readStates最后一个元素放入一个buffer为1的channal readStateC中
+5.执行linearizableReadLoop()的goroutine从readStateC取出元素，首先判断请求的唯一id是否匹配，
+然后等待apply index大于等于commit index，返回结果
+
+
+https://zhuanlan.zhihu.com/p/27869566
+
+
+### Linearizable Read---Lease Read
+
+在 Raft 论文里面，提到了一种通过 clock + heartbeat 的 lease read 优化方法。 leader在发送 heartbeat 的时候，
+会首先记录一个时间点 start，当系统大部分节点都回复了 heartbeat response，那么我们就可以认为 leader 的 lease 
+有效期可以到 start + election timeout / clock drift bound 这个时间点。
+
+为什么能够这么认为呢？主要是在于 Raft 的选举机制，因为 follower 会在至少 election timeout 的时间之后，才会重新发生选举，
+所以下一个 leader 选出来的时间一定可以保证大于 start + election timeout / clock drift bound。
+
+虽然采用 lease 的做法很高效，但仍然会面临风险问题，需要有一个前提条件，即各个服务器的 CPU clock 是准的，
+即使有误差，也会在一个非常小的 bound 范围里面，如果各个服务器之间 clock 走的频率不一样，有些太快，有些太慢，
+这套 lease 机制就可能出问题。
+
+https://zhuanlan.zhihu.com/p/31118381
+https://github.com/pingcap/blog-cn/blob/master/lease-read.md
+
+
+[consensus-yaraft](https://blog.neverchanje.com/2017/08/03/consensus-yaraft/)
+etcd raft 的c++实现
 
 

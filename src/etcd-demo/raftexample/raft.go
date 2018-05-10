@@ -268,7 +268,7 @@ func (rc *raftNode) startRaft() {
 		}
 	}
 
-	rc.snapshotter = raftsnap.New(rc.snapdir)
+	rc.snapshotter = raftsnap.New(nil, rc.snapdir) // TODO
 	rc.snapshotterReady <- rc.snapshotter
 
 	oldwal := wal.Exist(rc.waldir)
@@ -303,7 +303,7 @@ func (rc *raftNode) startRaft() {
 		ClusterID:   0x1000,
 		Raft:        rc,
 		ServerStats: stats.NewServerStats("", ""),
-		LeaderStats: stats.NewLeaderStats(strconv.Itoa(rc.id)), // TODO ???
+		LeaderStats: stats.NewLeaderStats(strconv.Itoa(rc.id)),
 		ErrorC:      make(chan error),
 	}
 

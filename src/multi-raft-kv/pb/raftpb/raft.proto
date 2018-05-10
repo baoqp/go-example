@@ -1,0 +1,174 @@
+syntax = "proto2";
+package raftpb;
+
+import "metapb/metapb.proto";
+
+enum EntryType {
+    EntryNormal = 0;
+    EntryConfChange = 1;
+}
+
+message Entry {
+    optional uint64 Term = 2; // must be 64-bit aligned for atomic operations
+    optional uint64 Index = 3; // must be 64-bit aligned for atomic operations
+    optional EntryType Type = 1;
+    optional bytes Data = 4;
+}
+
+message SnapshotMetadata {
+    optional ConfState conf_state = 1;
+    optional uint64 index = 2;
+    optional uint64 term = 3;
+}
+
+message Snapshot {
+    optional bytes data = 1;
+    optional SnapshotMetadata metadata = 2;
+}
+
+enum MessageType {
+    MsgHup = 0;
+    MsgBeat = 1;
+    MsgProp = 2;
+    MsgApp = 3;
+    MsgAppResp = 4;
+    MsgVote = 5;
+    MsgVoteResp = 6;
+    MsgSnap = 7;
+    MsgHeartbeat = 8;
+    MsgHeartbeatResp = 9;
+    MsgUnreachable = 10;
+    MsgSnapStatus = 11;
+    MsgCheckQuorum = 12;
+    MsgTransferLeader = 13;
+    MsgTimeoutNow = 14;
+    MsgReadIndex = 15;
+    MsgReadIndexResp = 16;
+    MsgPreVote = 17;
+    MsgPreVoteResp = 18;
+}
+
+message Message {
+    optional MessageType type = 1;
+    optional uint64 to = 2;
+    optional uint64 from = 3;
+    optional uint64 term = 4;
+    optional uint64 logTerm = 5;
+    optional uint64 index = 6;
+    repeated Entry entries = 7;
+    optional uint64 commit = 8;
+    optional Snapshot snapshot = 9;
+    optional bool reject = 10;
+    optional uint64 rejectHint = 11;
+    optional bytes context = 12;
+}
+
+message HardState {
+    optional uint64 term = 1;
+    optional uint64 vote = 2;
+    optional uint64 commit = 3;
+}
+
+message ConfState {
+    repeated uint64 nodes = 1;
+}
+
+enum ConfChangeType {
+    ConfChangeAddNode = 0;
+    ConfChangeRemoveNode = 1;
+    ConfChangeUpdateNode = 2;
+}
+
+message ConfChange {
+    optional uint64 ID = 1;
+    optional ConfChangeType Type = 2;
+    optional uint64 NodeID = 3;
+    optional bytes Context = 4;
+}
+
+
+enum SnapshotState {
+    Accept = 0;
+    Reject = 1;
+    Received = 2;
+}
+
+message RaftMessage {
+    optional uint64 cellID = 1;
+    optional metapb.Peer fromPeer = 2;
+    optional metapb.Peer toPeer = 3;
+    optional raftpb.Message message = 4;
+    optional metapb.CellEpoch cellEpoch = 5;
+    // true means to_peer is a tombstone peer and it should remove itself.
+    optional bool isTombstone = 6;
+    // Cell key range [start_key, end_key).
+    optional bytes start = 7;
+    optional bytes end = 8;
+}
+
+message StoreIdent {
+    optional uint64 clusterID = 1;
+    optional uint64 storeID = 2;
+}
+
+message ACKMessage {
+    optional uint64 seq = 1;
+    optional uint64 to = 2;
+}
+
+message SnapshotMessageHeader {
+    optional metapb.Cell cell = 1;
+    optional metapb.Peer fromPeer = 2;
+    optional metapb.Peer toPeer = 3;
+    optional uint64 term = 4;
+    optional uint64 index = 5;
+    optional uint64 seq = 6;
+}
+
+message SnapshotMessage {
+    optional SnapshotMessageHeader header = 1;
+    optional SnapshotChunkMessage chunk = 2;
+    optional SnapshotAckMessage ack = 3;
+    optional SnapshotAskMessage ask = 4;
+}
+
+message SnapshotChunkMessage {
+    optional bytes data = 1;
+    optional bool first = 2;
+    optional bool last = 3;
+    optional uint64 fileSize = 4;
+    optional uint64 checkSum = 5;
+}
+
+message SnapshotAckMessage {
+    optional SnapshotState ack = 1;
+}
+
+message SnapshotAskMessage {
+}
+
+enum PeerState {
+    Normal = 0;
+    Applying = 1;
+    Tombstone = 2;
+}
+
+message CellLocalState {
+    optional PeerState state = 1;
+    optional metapb.Cell cell = 2;
+}
+
+message RaftLocalState {
+    optional raftpb.HardState hardState = 1;
+    optional uint64 lastIndex = 2;
+}
+
+message RaftTruncatedState {
+    optional uint64 index = 1;
+    optional uint64 term = 2;
+}
+
+message RaftApplyState {
+    optional uint64 applied_index = 1;
+    optional RaftTruncatedState truncated_state = 2;
+}

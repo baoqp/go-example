@@ -14,8 +14,7 @@ func (ks *KeySlice) Assign(pageNo pageId, data []byte) {
 	ks.data = data
 }
 
-
-type DataSlice []byte
-
-
-
+type DataSlice struct {
+	len  uint16
+	data []byte
+}

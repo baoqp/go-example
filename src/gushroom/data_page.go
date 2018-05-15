@@ -36,6 +36,35 @@ func (dp *DataPage) Reset(pageNo pageId) {
 	dp.dirty = false
 }
 
+func (dp *DataPage) toBytes() []byte {
+	bytes := make([]byte, PageSize, PageSize)
+	util.EncodeUint32(bytes, 0, uint32(dp.pageNo))
+	util.EncodeUint16(bytes, 4, dp.total)
+	util.EncodeUint16(bytes, 6, dp.curr)
+	if dp.dirty {
+		bytes[8] = byte(1)
+	} else {
+		bytes[8] = byte(1)
+	}
+	copy(bytes[9:], dp.data) // TODO copy是不是必要
+	return bytes
+}
+
+func (dp *DataPage) fromBytes(bytes []byte) {
+	var pageNo uint32
+	util.DecodeUint32(bytes, 0, &pageNo)
+	dp.pageNo = pageId(pageNo)
+	util.DecodeUint16(bytes, 4, &dp.total)
+	util.DecodeUint16(bytes, 6, &dp.curr)
+	if bytes[8] > 0 {
+		dp.dirty = true
+	} else {
+		dp.dirty = false
+	}
+	dp.data = bytes[9:]
+}
+
+
 func (dp *DataPage) PutData(slice DataSlice) (uint32, error) {
 
 	len := uint16(slice.len + LengthByte)

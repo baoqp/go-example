@@ -3,7 +3,6 @@ package util
 
 // 线程安全的队列
 
-
 import (
 	"errors"
 	"sync"

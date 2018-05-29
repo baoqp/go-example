@@ -22,11 +22,21 @@ type DataPage struct {
 	data   []byte // []byte在内存中不是和struct分配在一起的
 }
 
+
 func NewPage(pageNo pageId) *DataPage {
 	dp := &DataPage{}
 	dp.data = make([]byte, 0, DataMaxLen)
 	dp.Reset(pageNo)
 	return dp
+}
+
+// 序列化DataPage
+func (dp *DataPage) ToBytes() []byte {
+	buf := make([]byte, PageSize, PageSize)
+	util.EncodeUint32(buf, 0,  uint32(dp.pageNo))
+	util.EncodeUint16(buf, 4,  dp.total)
+	util.EncodeUint16(buf, 6,  dp.curr)
+
 }
 
 func (dp *DataPage) Reset(pageNo pageId) {
@@ -102,6 +112,10 @@ func (dp *DataPage) GetData(pageNo pageId) *DataSlice {
 
 
 func (dp *DataPage) Write(fd *os.File) {
+
+	if dp.dirty {
+
+	}
 	fd.WriteAt()
 }
 

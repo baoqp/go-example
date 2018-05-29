@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"hash/crc32"
 	"fmt"
+	"sync"
 )
 
 func Rand(up int) int {
@@ -198,3 +199,32 @@ func Assert(condition bool, msg string, v ...interface{}) {
 func CHECK(condition bool, msg string, v ...interface{}) {
 	Assert(condition, msg, v)
 }
+
+
+
+
+
+// ---------------------------------线程相关---------------------------------//
+
+type WaitGroupWrapper struct {
+	sync.WaitGroup
+}
+
+func (w *WaitGroupWrapper) Wrap(cb func()) {
+	w.Add(1)
+	go func() {
+		cb()
+		w.Done()
+	}()
+}
+
+
+
+
+
+
+
+
+
+
+

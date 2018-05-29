@@ -57,3 +57,17 @@ func Test2(t *testing.T) {
 
 	fmt.Printf("v2: %#v\n", v2)
 }
+
+type pageId uint32
+type DataPage struct {
+	pageNo pageId
+	total  uint16 // 写入次数
+	curr   uint16 // data当前索引
+	dirty  bool
+	data   [4000]byte
+}
+
+
+func Test3(t *testing.T) {
+	fmt.Println(unsafe.Sizeof(DataPage{}))
+}

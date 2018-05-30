@@ -1,4 +1,4 @@
-package main
+package glemon
 
 import (
 	"flag"
@@ -33,21 +33,26 @@ func main() {
 	version = flag.Int("x", 0, "Print the version number.")
 	flag.Parse()
 
-	if (*version > 0) {
+	if *version > 0 {
 		fmt.Println("Gemon version 1.0")
 		os.Exit(0);
 	}
 
 	args := os.Args[1:]
-	fileName := args[len(args)-1] // 要处理的文件
-	if(ISOPT(fileName)) {
+	filename := args[len(args)-1] // 要处理的文件
+	if ISOPT(filename) {
 		fmt.Println("no file present")
 		os.Exit(1);
 	}
 
+	Strsafe_init()
+	Symbol_init()
+	State_init()
 
+	lem := lemon{}
+	lem.filename = filename
 
 
 	fmt.Println(*basisflag)
-	fmt.Println(fileName)
+	fmt.Println(filename)
 }

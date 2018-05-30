@@ -46,7 +46,7 @@ type rule struct {
 	ruleline  int       /* Line number for the rule */
 	nrhs      int       /* Number of RHS symbols */
 	rhs       []*symbol /* The RHS symbols 产生式右边所有*/
-	rhsalias  []string; /* An alias for each RHS symbol (NULL if none) 产生式右边的各符号的别名*/
+	rhsalias  []string /* An alias for each RHS symbol (NULL if none) 产生式右边的各符号的别名*/
 	line      int       /* Line number at which code begins */
 	code      string    /* The code executed when this rule is reduced 规约时执行的动作代码*/
 	precsym   *symbol   /* Precedence symbol for this rule */
@@ -72,7 +72,7 @@ const (
 /*
 ** config用于保存右部加有句点的产生式，即LALR中的item */
 type config struct {
-	rp     *rule;    /* The rule upon which the configuration is based */
+	rp     *rule     /* The rule upon which the configuration is based */
 	dot    int       /* The parse point */
 	fws    []rune    /* Follow-set for this configuration only */
 	fplp   *plink    /* Follow-set forward propagation links */
@@ -143,7 +143,7 @@ type lemon struct {
 	tokentype    string    /* Type of terminal symbols in the parser stack */
 	vartype      string    /* The default type of non-terminal symbols */
 	start        string    /* Name of the start symbol for the grammar */
-	stacksize    int    /* Size of the parser stack */
+	stacksize    int       /* Size of the parser stack */
 	include      string    /* Code to put at the start of the C file */
 	includeln    int       /* Line number for start of include code */
 	error        string    /* Code to execute when an error is seen */

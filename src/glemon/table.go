@@ -191,10 +191,10 @@ type s_x3node struct {
 
 // golang 的map不支持自定义key
 type s_x3 struct {
-	size  int            /* The number of available slots. Must be a power of 2 greater than or equal to 1 */
-	count int            /* Number of currently slots filled */
-	tbl   []*s_x3node;   /* The data stored here */
-	ht    [][]*s_x3node; /* Hash table for lookups 保存指针到hash table加快查找*/
+	size  int           /* The number of available slots. Must be a power of 2 greater than or equal to 1 */
+	count int           /* Number of currently slots filled */
+	tbl   []*s_x3node   /* The data stored here */
+	ht    [][]*s_x3node /* Hash table for lookups 保存指针到hash table加快查找*/
 }
 
 var x3a *s_x3
@@ -208,18 +208,19 @@ func State_init() {
 	x3a = &s_x3{}
 	x3a.size = 128
 	x3a.count = 0
-	x3a.tbl = make([]*s_x3node, 128, 128)
+	x3a.tbl = make([]*s_x3node, 0, 128)
 	x3a.ht = make([][]*s_x3node, 128, 128)
+
 	// TODO 初始化
 }
 
-// TODO
+// To be test
 func State_insert(data *state, key *config) bool {
 
 	if x3a == nil {
 		return false
 	}
-	ph := statehash(key);
+	ph := statehash(key)
 	h := ph & (x3a.size - 1)
 	np := x3a.ht[h]
 
@@ -233,18 +234,34 @@ func State_insert(data *state, key *config) bool {
 
 	// 扩容
 	if x3a.count == x3a.size {
-
+		size := x3a.size * 2
+		arr := make([]*s_x3node, x3a.size, size)
+		copy(arr, x3a.tbl)
+		x3a.ht = make([][]*s_x3node, size, size)
+		for i := 0; i < x3a.count; i++ {
+			h = statehash(x3a.tbl[i].key) & (size - 1)
+			x3a.ht[h] = append(x3a.ht[h], x3a.tbl[i])
+		}
+		x3a.tbl = arr
+		x3a.size = size
 	}
 
-
-	return false
+	newstate := &s_x3node{
+		key:  key,
+		data: data,
+	}
+	x3a.tbl = append(x3a.tbl, newstate)
+	h = ph & (x3a.size - 1)
+	x3a.ht[h] = append(x3a.ht[h], newstate)
+	x3a.count += 1
+	return true
 }
 
 func State_find(key *config) *state {
 	if x3a == nil {
 		return nil
 	}
-	h := statehash(key)
+	h := statehash(key) & (x3a.size - 1)
 	np := x3a.ht[h]
 
 	for _, node := range np {

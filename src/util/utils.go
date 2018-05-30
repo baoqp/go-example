@@ -59,6 +59,17 @@ func IterDir(path string) ([]string, error) {
 	return allFile, nil
 }
 
+
+//---------------------------------string操作-------------------------------------//
+
+func IsUpper(str string) bool {
+	return str == strings.ToUpper(str) && str != strings.ToLower(str)
+}
+
+func IsLower(str string) bool {
+	return str == strings.ToLower(str) && str != strings.ToUpper(str)
+}
+
 //---------------------------------[]byte操作-------------------------------------//
 
 func AppendBytes(inputs ...[]byte) [] byte {

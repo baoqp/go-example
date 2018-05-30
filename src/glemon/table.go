@@ -1,105 +1,227 @@
 package glemon
 
-// 计算字符串hash值
-func strhash(x string) int {
-	h := 0;
-	for _, c := range x {
-		h = h*13 + int(c)
-	}
-	return h;
-}
+import "util"
 
-/* There is one instance of the following structure for each
-** associative array of type "x1".
-** TODO hashmap ??
-*/
-type s_x1 struct {
-	size  int          /* The number of available slots. Must be a power of 2 greater than or equal to 1 */
-	count int          /* Number of currently slots filled */
-	tbl   []s_x1node;  /* The data stored here */
-	ht    []*s_x1node; /* Hash table for lookups */
-}
+//--------------------------s_x1--------------------------------//
 
-/* There is only one instance of the array, which is the following */
-var x1a *s_x1 = nil
+type s_x1 map[string]string
 
-/* Allocate a new associative array */
+var x1a s_x1
+
 func Strsafe_init() {
-	if x1a != nil {
-		return
+	tmp := make(map[string]string)
+	x1a = s_x1(tmp)
+}
+
+func Strsafe_insert(data string) bool {
+	if _, ok := x1a[data]; ok {
+		/* An existing entry with the same key is found. */
+		/* Fail because overwrite is not allows. */
+		return false
 	}
 
-	x1a = &s_x1{}
-	x1a.size = 1024
-	x1a.count = 0
-	x1a.tbl = make([]s_x1node, 1024, 1024)
-	x1a.ht = make([]*s_x1node, 1024, 1024)
-
-	// TODO 初始化
+	x1a[data] = data
+	return true
 }
 
-/* There is one instance of this structure for every data element
-** in an associative array of type "x1".
+func Strsafe_find(key string) string {
+	if _, ok := x1a[key]; ok {
+		return x1a[key]
+	}
+	return ""
+}
+
+//----------------------------s_x2------------------------------//
+
+/* Return a pointer to the (terminal or nonterminal) symbol "x".
+** Create a new symbol if this is the first time "x" has been seen.
+** 使用字符串x创建符号
 */
-type s_x1node struct {
-	data string       /* The data */
-	next *s_x1node;   /* Next entry with the same hash */
-	from []*s_x1node; /* Previous link TODO ??? */
+func Symbol_new(x string) *symbol {
+	sp := Symbol_find(x)
+	if sp == nil {
+		sp = &symbol{
+			name:       x,
+			rule:       nil,
+			fallback:   nil,
+			prec:       -1,
+			assoc:      UNK,
+			firstset:   nil,
+			lambda:     false,
+			destructor: nil,
+			datatype:   nil,
+		}
+
+		if util.IsUpper(x) {
+			sp.typ = TERMINAL
+		} else {
+			sp.typ = NONTERMINAL
+		}
+
+		Symbol_insert(x, sp);
+	}
+	return sp;
 }
 
-/* There is one instance of the following structure for each
-** associative array of type "x2".
+/* Compare two symbols for working purposes
+**
+** Symbols that begin with upper case letters (terminals or tokens)
+** must sort before symbols that begin with lower case letters
+** (non-terminals).  Other than that, the order does not matter.
+**
+** We find experimentally that leaving the symbols in their original
+** order (the order they appeared in the grammar file) gives the
+** smallest parser tables in SQLite.*
+** 先按是否为终结符排序，相同类型按照出现顺序排序
 */
-type s_x2 struct {
-	size  int            /* The number of available slots. Must be a power of 2 greater than or equal to 1 */
-	count int            /* Number of currently slots filled */
-	tbl   []s_x2node;    /* The data stored here */
-	ht    [][]*s_x2node; /* Hash table for lookups */
+func Symbolcmpp(a [][]*symbol, b [][]*symbol) int {
+
+	c1 := 0
+	if util.IsLower(a[0][0].name) {
+		c1 = 1
+	}
+
+	c2 := 0
+	if util.IsLower(b[0][0].name) {
+		c2 = 1
+	}
+
+	i1 := a[0][0].index + 10000000*c1
+	i2 := b[0][0].index + 10000000*c2
+
+	return i1 - i2
 }
 
-/* There is only one instance of the array, which is the following */
-var x2a *s_x2 = nil
+type s_x2 map[string]*symbol
 
-/* Allocate a new associative array */
+var x2a s_x2
+
 func Symbol_init() {
 	if x2a != nil {
 		return
 	}
-
-	x2a = &s_x2{}
-	x2a.size = 128
-	x2a.count = 0
-	x2a.tbl = make([]s_x2node, 128, 128)
-	x2a.ht = make([][]*s_x2node, 128, 128)
-
-	// TODO 初始化
+	tmp := make(map[string]*symbol)
+	x2a = s_x2(tmp)
 }
 
-/* Return a pointer to data assigned to the given key.  Return NULL
-** if no such key. */
-func Symbol_find(key string) *symbol {
-	if x2a == nil {
-		return nil
+func Symbol_insert(key string, data *symbol) bool {
+	if _, ok := x2a[key]; ok {
+		/* An existing entry with the same key is found. */
+		/* Fail because overwrite is not allows. */
+		return false
 	}
-	h := strhash(key) & (x2a.size - 1)
-	np := x2a.ht[h]
 
-	for _, node := range np {
-		if node.key == key {
-			return node.data
-		}
+	x2a[key] = data
+	return true
+}
+
+func Symbol_find(key string) *symbol {
+	if _, ok := x2a[key]; ok {
+		return x2a[key]
 	}
 	return nil
 }
 
-func Symbol_insert(data *symbol, key string) bool {
+func Symbol_count() int {
+	return len(x2a)
+}
 
+func Symbol_arrayof() []*symbol {
 	if x2a == nil {
+		return nil
+	}
+
+	v := make([]*symbol, 0, len(x2a))
+	for _, value := range x2a {
+		v = append(v, value)
+	}
+	return v
+}
+
+//----------------------------s_x3------------------------------//
+
+/* Compare two configurations */
+func Configcmp(a *config, b *config) int {
+	x := a.rp.index - b.rp.index
+	if x == 0 {
+		x = a.dot - b.dot
+	}
+	return x
+}
+
+/* Compare two states */
+func statecmp(a *config, b *config) int {
+	var rc int
+	for rc = 0; rc == 0 && a != nil && b != nil; {
+		rc = a.rp.index - b.rp.index
+		a = a.bp
+		b = b.bp
+	}
+
+	if rc == 0 {
+		if a != nil {
+			rc = 1
+		}
+
+		if b != nil {
+			rc = -1
+		}
+	}
+
+	return rc
+}
+
+func statehash(a *config) int {
+	h := 0
+	for a != nil {
+		h = h*571 + a.rp.index*37 + a.dot;
+		a = a.bp;
+	}
+	return h;
+}
+
+func State_new() *state {
+	return &state{}
+}
+
+type s_x3node struct {
+	data *state
+	key  *config
+}
+
+// golang 的map不支持自定义key
+type s_x3 struct {
+	size  int            /* The number of available slots. Must be a power of 2 greater than or equal to 1 */
+	count int            /* Number of currently slots filled */
+	tbl   []*s_x3node;   /* The data stored here */
+	ht    [][]*s_x3node; /* Hash table for lookups 保存指针到hash table加快查找*/
+}
+
+var x3a *s_x3
+
+func State_init() {
+
+	if x3a != nil {
+		return
+	}
+
+	x3a = &s_x3{}
+	x3a.size = 128
+	x3a.count = 0
+	x3a.tbl = make([]*s_x3node, 128, 128)
+	x3a.ht = make([][]*s_x3node, 128, 128)
+	// TODO 初始化
+}
+
+// TODO
+func State_insert(data *state, key *config) bool {
+
+	if x3a == nil {
 		return false
 	}
-	ph := strhash(key);
-	h := ph & (x2a.size - 1)
-	np := x2a.ht[h]
+	ph := statehash(key);
+	h := ph & (x3a.size - 1)
+	np := x3a.ht[h]
 
 	for _, node := range np {
 		if node.key == key {
@@ -110,62 +232,25 @@ func Symbol_insert(data *symbol, key string) bool {
 	}
 
 	// 扩容
-	if x2a.count == x2a.size {
+	if x3a.count == x3a.size {
 
 	}
 
-	h = ph & (x2a.size-1);
-	npp := &x2a.tbl[x2a.count]
-	npp.key = key
-	npp.data = data
-	// TODO ???
 
+	return false
 }
 
-/* There is one instance of this structure for every data element
-** in an associative array of type "x2".
-*/
-type s_x2node struct {
-	data *symbol      /* The data */
-	key  string       /* The key */
-	next *s_x1node;   /* Next entry with the same hash */
-	from []*s_x1node; /* Previous link TODO ??? */
-}
-
-/* There is one instance of the following structure for each
-** associative array of type "x2".
-*/
-type s_x3 struct {
-	size  int          /* The number of available slots. Must be a power of 2 greater than or equal to 1 */
-	count int          /* Number of currently slots filled */
-	tbl   []s_x3node;  /* The data stored here */
-	ht    []*s_x3node; /* Hash table for lookups */
-}
-
-/* There is only one instance of the array, which is the following */
-var x3a *s_x3 = nil
-
-/* Allocate a new associative array */
-func State_init() {
-	if x3a != nil {
-		return
+func State_find(key *config) *state {
+	if x3a == nil {
+		return nil
 	}
+	h := statehash(key)
+	np := x3a.ht[h]
 
-	x3a = &s_x3{}
-	x3a.size = 128
-	x3a.count = 0
-	x3a.tbl = make([]s_x3node, 128, 128)
-	x3a.ht = make([]*s_x3node, 128, 123)
-
-	// TODO 初始化
-}
-
-/* There is one instance of this structure for every data element
-** in an associative array of type "x2".
-*/
-type s_x3node struct {
-	data *state       /* The data */
-	key  string       /* The key */
-	next *s_x3node;   /* Next entry with the same hash */
-	from []*s_x3node; /* Previous link TODO ??? */
+	for _, node := range np {
+		if statecmp(node.key, key) == 0 {
+			return node.data
+		}
+	}
+	return nil
 }

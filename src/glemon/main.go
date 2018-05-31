@@ -42,7 +42,7 @@ func main() {
 	filename := args[len(args)-1] // 要处理的文件
 	if ISOPT(filename) {
 		fmt.Println("no file present")
-		os.Exit(1);
+		os.Exit(1)
 	}
 
 	Strsafe_init()
@@ -51,8 +51,11 @@ func main() {
 
 	lem := lemon{}
 	lem.filename = filename
+	lem.basisflag = *basisflag
 
+	Symbol_new("$")
+	lem.errsym = Symbol_new("error")
 
-	fmt.Println(*basisflag)
-	fmt.Println(filename)
+	Symbol_print()
+
 }

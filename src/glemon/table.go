@@ -1,6 +1,9 @@
 package glemon
 
-import "util"
+import (
+	"util"
+	"fmt"
+)
 
 //--------------------------s_x1--------------------------------//
 
@@ -48,8 +51,8 @@ func Symbol_new(x string) *symbol {
 			assoc:      UNK,
 			firstset:   nil,
 			lambda:     false,
-			destructor: nil,
-			datatype:   nil,
+			destructor: "",
+			datatype:   "",
 		}
 
 		if util.IsUpper(x) {
@@ -58,9 +61,9 @@ func Symbol_new(x string) *symbol {
 			sp.typ = NONTERMINAL
 		}
 
-		Symbol_insert(x, sp);
+		Symbol_insert(x, sp)
 	}
-	return sp;
+	return sp
 }
 
 /* Compare two symbols for working purposes
@@ -137,6 +140,14 @@ func Symbol_arrayof() []*symbol {
 	}
 	return v
 }
+
+func Symbol_print() {
+	for _, value := range x2a {
+		 fmt.Println(value.name)
+	}
+}
+
+
 
 //----------------------------s_x3------------------------------//
 
@@ -245,13 +256,13 @@ func State_insert(data *state, key *config) bool {
 		x3a.size = size
 	}
 
-	newstate := &s_x3node{
+	newNode := &s_x3node{
 		key:  key,
 		data: data,
 	}
-	x3a.tbl = append(x3a.tbl, newstate)
+	x3a.tbl = append(x3a.tbl, newNode)
 	h = ph & (x3a.size - 1)
-	x3a.ht[h] = append(x3a.ht[h], newstate)
+	x3a.ht[h] = append(x3a.ht[h], newNode)
 	x3a.count += 1
 	return true
 }
@@ -319,18 +330,17 @@ func Configtable_init() {
 	x4a.ht = make([][]*s_x4node, 64, 64)
 }
 
-
 func Configtable_insert(data *config) bool {
 
 	if x4a == nil {
 		return false
 	}
 	ph := confighash(data)
-	h := ph & (x3a.size - 1)
+	h := ph & (x4a.size - 1)
 	np := x4a.ht[h]
 
 	for _, node := range np {
-		if  Configcmp(node.data, data)==0 {
+		if Configcmp(node.data, data) == 0 {
 			/* An existing entry with the same key is found. */
 			/* Fail because overwrite is not allows. */
 			return false
@@ -338,26 +348,60 @@ func Configtable_insert(data *config) bool {
 	}
 
 	// 扩容
-	if x3a.count == x3a.size {
-		size := x3a.size * 2
-		arr := make([]*s_x3node, x3a.size, size)
-		copy(arr, x3a.tbl)
-		x3a.ht = make([][]*s_x3node, size, size)
-		for i := 0; i < x3a.count; i++ {
-			h = statehash(x3a.tbl[i].key) & (size - 1)
-			x3a.ht[h] = append(x3a.ht[h], x3a.tbl[i])
+	if x4a.count == x4a.size {
+		size := x4a.size * 2
+		arr := make([]*s_x4node, x4a.size, size)
+		copy(arr, x4a.tbl)
+		x4a.ht = make([][]*s_x4node, size, size)
+		for i := 0; i < x4a.count; i++ {
+			h = confighash(x4a.tbl[i].data) & (size - 1)
+			x4a.ht[h] = append(x4a.ht[h], x4a.tbl[i])
 		}
-		x3a.tbl = arr
-		x3a.size = size
+		x4a.tbl = arr
+		x4a.size = size
 	}
 
-	newstate := &s_x3node{
-		key:  key,
+	newNode := &s_x4node{
 		data: data,
 	}
-	x3a.tbl = append(x3a.tbl, newstate)
-	h = ph & (x3a.size - 1)
-	x3a.ht[h] = append(x3a.ht[h], newstate)
-	x3a.count += 1
+	x4a.tbl = append(x4a.tbl, newNode)
+	h = ph & (x4a.size - 1)
+	x4a.ht[h] = append(x4a.ht[h], newNode)
+	x4a.count += 1
 	return true
+}
+
+func Configtable_find(key *config) *config {
+	if x4a == nil {
+		return nil
+	}
+	h := confighash(key) & (x4a.size - 1)
+	np := x4a.ht[h]
+
+	for _, node := range np {
+		if statecmp(node.data, key) == 0 {
+			return node.data
+		}
+	}
+	return nil
+}
+
+type configClearCallback func(c *config)
+
+func Configtable_clear(f configClearCallback) {
+
+	if x4a == nil || x4a.count == 0 {
+		return
+	}
+
+	if f != nil {
+		for _, node := range x4a.tbl {
+			f(node.data)
+		}
+	}
+
+	for i := 0; i < x4a.size; i++ {
+		x4a.ht[i] = nil // TODO
+	}
+	x4a.count = 0
 }

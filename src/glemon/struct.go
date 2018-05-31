@@ -26,7 +26,7 @@ type symbol struct {
 	name         string      /* Name of the symbol */
 	index        int         /* Index number for this symbol */
 	typ          symbol_type /* Symbols are all either TERMINALS or NTs */
-	rule         []rule      /* Linked list of rules of this (if an NT) */
+	rule         []*rule      /* Linked list of rules of this (if an NT) */
 	fallback     *symbol     /* fallback token in case this token doesn't parse */
 	prec         int         /* Precedence if defined (-1 otherwise) */
 	assoc        e_assoc     /* Associativity if precedence is defined */
@@ -53,7 +53,7 @@ type rule struct {
 	index     int       /* An index number for this rule */
 	canReduce bool      /* True if this rule is ever reduced */
 	nextlhs   *rule     /* Next rule with the same LHS 具有相同左边非终结符的下个产生式*/
-	next      rule      /* Next rule in the global list */
+	next      *rule      /* Next rule in the global list */
 }
 
 /* A configuration is a production rule of the grammar together with
@@ -137,11 +137,11 @@ type lemon struct {
 	nterminal    int       /* Number of terminal symbols */
 	symbols      []*symbol /* Sorted array of pointers to symbols */
 	errorcnt     int       /* Number of errors */
-	errsym       symbol    /* The error symbol */
+	errsym       *symbol    /* The error symbol */
 	name         string    /* Name of the generated parser */
 	arg          string    /* Declaration of the 3th argument to parser */
 	tokentype    string    /* Type of terminal symbols in the parser stack */
-	vartype      string    /* The default type of non-terminal symbols */
+	vartype      int    /* The default type of non-terminal symbols */
 	start        string    /* Name of the start symbol for the grammar */
 	stacksize    int       /* Size of the parser stack */
 	include      string    /* Code to put at the start of the C file */
@@ -167,5 +167,5 @@ type lemon struct {
 	tablesize    int       /* Size of the parse tables */
 	basisflag    int       /* Print only basis configurations */
 	has_fallback int       /* True if any %fallback is seen in the grammer */
-	argv0        string;   /* Name of the program */
+	argv0        string   /* Name of the program */
 }

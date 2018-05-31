@@ -174,10 +174,10 @@ func statecmp(a *config, b *config) int {
 func statehash(a *config) int {
 	h := 0
 	for a != nil {
-		h = h*571 + a.rp.index*37 + a.dot;
-		a = a.bp;
+		h = h*571 + a.rp.index*37 + a.dot
+		a = a.bp
 	}
-	return h;
+	return h
 }
 
 func State_new() *state {
@@ -189,7 +189,7 @@ type s_x3node struct {
 	key  *config
 }
 
-// golang 的map不支持自定义key
+// 类似于map的功能，因为golang 的map不支持自定义key
 type s_x3 struct {
 	size  int           /* The number of available slots. Must be a power of 2 greater than or equal to 1 */
 	count int           /* Number of currently slots filled */
@@ -214,7 +214,6 @@ func State_init() {
 	// TODO 初始化
 }
 
-// To be test
 func State_insert(data *state, key *config) bool {
 
 	if x3a == nil {
@@ -270,4 +269,95 @@ func State_find(key *config) *state {
 		}
 	}
 	return nil
+}
+
+func State_arrayof() []*state {
+	if x3a == nil {
+		return nil
+	}
+	array := make([]*state, x3a.count, x3a.count)
+	for i, node := range x3a.tbl {
+		array[i] = node.data
+	}
+	return array
+}
+
+//----------------------------s_x4------------------------------//
+
+func confighash(a *config) int {
+	h := 0
+	for a != nil {
+		h = h*571 + a.rp.index*37 + a.dot
+		a = a.bp
+	}
+	return h
+}
+
+type s_x4 struct {
+	size  int
+	count int
+	tbl   []*s_x4node
+	ht    [][]*s_x4node
+};
+
+type s_x4node struct {
+	data *config
+}
+
+var x4a *s_x4
+
+func Configtable_init() {
+
+	if x4a != nil {
+		return
+	}
+
+	x4a = &s_x4{}
+	x4a.size = 128
+	x4a.count = 0
+	x4a.tbl = make([]*s_x4node, 0, 64)
+	x4a.ht = make([][]*s_x4node, 64, 64)
+}
+
+
+func Configtable_insert(data *config) bool {
+
+	if x4a == nil {
+		return false
+	}
+	ph := confighash(data)
+	h := ph & (x3a.size - 1)
+	np := x4a.ht[h]
+
+	for _, node := range np {
+		if  Configcmp(node.data, data)==0 {
+			/* An existing entry with the same key is found. */
+			/* Fail because overwrite is not allows. */
+			return false
+		}
+	}
+
+	// 扩容
+	if x3a.count == x3a.size {
+		size := x3a.size * 2
+		arr := make([]*s_x3node, x3a.size, size)
+		copy(arr, x3a.tbl)
+		x3a.ht = make([][]*s_x3node, size, size)
+		for i := 0; i < x3a.count; i++ {
+			h = statehash(x3a.tbl[i].key) & (size - 1)
+			x3a.ht[h] = append(x3a.ht[h], x3a.tbl[i])
+		}
+		x3a.tbl = arr
+		x3a.size = size
+	}
+
+	newstate := &s_x3node{
+		key:  key,
+		data: data,
+	}
+	x3a.tbl = append(x3a.tbl, newstate)
+	h = ph & (x3a.size - 1)
+	x3a.ht[h] = append(x3a.ht[h], newstate)
+	x3a.count += 1
+	return true
 }

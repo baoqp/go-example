@@ -11,6 +11,14 @@ type s_x1 map[string]string
 
 var x1a s_x1
 
+// TODO
+func Strsafe(y string) {
+	z := Strsafe_find(y)
+	if len(z) == 0 {
+		Strsafe_insert(y)
+	}
+}
+
 func Strsafe_init() {
 	tmp := make(map[string]string)
 	x1a = s_x1(tmp)

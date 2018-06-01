@@ -60,7 +60,7 @@ func IterDir(path string) ([]string, error) {
 }
 
 
-//---------------------------------string操作-------------------------------------//
+//---------------------------------字符串和字符操作-------------------------------------//
 
 func IsUpper(str string) bool {
 	return str == strings.ToUpper(str) && str != strings.ToLower(str)
@@ -68,6 +68,18 @@ func IsUpper(str string) bool {
 
 func IsLower(str string) bool {
 	return str == strings.ToLower(str) && str != strings.ToUpper(str)
+}
+
+func IsAlumn(c byte) bool {
+	return (c>= '0' && c <= '9') || (c>= 'a' && c <= 'z') || (c>= 'A' && c <= 'Z')
+}
+
+func IsLowerChar(c byte) bool {
+	return (c>= 'a' && c <= 'z')
+}
+
+func IsUpperChar(c byte) bool {
+	return (c>= 'A' && c <= 'Z')
 }
 
 //---------------------------------[]byte操作-------------------------------------//

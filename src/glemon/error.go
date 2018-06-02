@@ -8,6 +8,7 @@ const (
 	PREFIXLIMIT = 30
 )
 
+// TODO
 func ErrorMsg(filename string, lineno int, format ...string) {
 	var prefix string
 	if lineno > 0 {

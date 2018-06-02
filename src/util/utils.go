@@ -82,6 +82,10 @@ func IsUpperChar(c byte) bool {
 	return (c>= 'A' && c <= 'Z')
 }
 
+func IsAlphaChar(c byte) bool {
+	return   (c>= 'a' && c <= 'z') || (c>= 'A' && c <= 'Z')
+}
+
 //---------------------------------[]byte操作-------------------------------------//
 
 func AppendBytes(inputs ...[]byte) [] byte {

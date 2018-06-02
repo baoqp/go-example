@@ -11,7 +11,7 @@ type s_x1 map[string]string
 
 var x1a s_x1
 
-// TODO
+
 func Strsafe(y string) {
 	z := Strsafe_find(y)
 	if len(z) == 0 {
@@ -20,8 +20,7 @@ func Strsafe(y string) {
 }
 
 func Strsafe_init() {
-	tmp := make(map[string]string)
-	x1a = s_x1(tmp)
+	x1a = make(map[string]string)
 }
 
 func Strsafe_insert(data string) bool {
@@ -85,20 +84,20 @@ func Symbol_new(x string) *symbol {
 ** smallest parser tables in SQLite.*
 ** 先按是否为终结符排序，相同类型按照出现顺序排序
 */
-func Symbolcmpp(a [][]*symbol, b [][]*symbol) int {
+func Symbolcmpp(a *symbol, b *symbol) int {
 
 	c1 := 0
-	if util.IsLower(a[0][0].name) {
+	if util.IsLower(a.name) {
 		c1 = 1
 	}
 
 	c2 := 0
-	if util.IsLower(b[0][0].name) {
+	if util.IsLower(b.name) {
 		c2 = 1
 	}
 
-	i1 := a[0][0].index + 10000000*c1
-	i2 := b[0][0].index + 10000000*c2
+	i1 := a.index + 10000000*c1
+	i2 := b.index + 10000000*c2
 
 	return i1 - i2
 }
@@ -148,6 +147,17 @@ func Symbol_arrayof() []*symbol {
 	}
 	return v
 }
+
+
+type SortedSymol []*symbol
+
+func (ss SortedSymol) Len() int           { return len(ss) }
+func (ss SortedSymol) Swap(i, j int)      { ss[i], ss[j] = ss[j], ss[i] }
+func (ss SortedSymol) Less(i, j int) bool {
+	return Symbolcmpp(ss[i], ss[j]) < 0
+}
+
+
 
 func Symbol_print() {
 	for _, value := range x2a {

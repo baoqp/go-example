@@ -26,11 +26,11 @@ type symbol struct {
 	name         string      /* Name of the symbol */
 	index        int         /* Index number for this symbol */
 	typ          symbol_type /* Symbols are all either TERMINALS or NTs */
-	rule         []*rule      /* Linked list of rules of this (if an NT) */
+	rule         *rule       /* Linked list of rules of this (if an NT) 如果是非终结符，那么会有多个产生式，symbol的rule是链表的表首指针， rule结构体里的nextlhs指向下一个节点*/
 	fallback     *symbol     /* fallback token in case this token doesn't parse */
 	prec         int         /* Precedence if defined (-1 otherwise) */
 	assoc        e_assoc     /* Associativity if precedence is defined */
-	firstset     []rune      /* First-set for all rules of this symbol */
+	firstset     []byte      /* First-set for all rules of this symbol */
 	lambda       bool        /* True if NT and can generate an empty string */
 	destructor   string      /* Code which executes whenever this symbol is popped from the stack during error processing */
 	destructorln int         /* Line number for start of destructor.  Set to -1 for duplicate destructors. */
@@ -46,14 +46,14 @@ type rule struct {
 	ruleline  int       /* Line number for the rule */
 	nrhs      int       /* Number of RHS symbols */
 	rhs       []*symbol /* The RHS symbols 产生式右边所有*/
-	rhsalias  []string /* An alias for each RHS symbol (NULL if none) 产生式右边的各符号的别名*/
+	rhsalias  []string  /* An alias for each RHS symbol (NULL if none) 产生式右边的各符号的别名*/
 	line      int       /* Line number at which code begins */
 	code      string    /* The code executed when this rule is reduced 规约时执行的动作代码*/
 	precsym   *symbol   /* Precedence symbol for this rule */
 	index     int       /* An index number for this rule */
 	canReduce bool      /* True if this rule is ever reduced */
 	nextlhs   *rule     /* Next rule with the same LHS 具有相同左边非终结符的下个产生式*/
-	next      *rule      /* Next rule in the global list */
+	next      *rule     /* Next rule in the global list */
 }
 
 /* A configuration is a production rule of the grammar together with
@@ -129,7 +129,7 @@ type plink struct {
 //The state vector for the entire parser generator is recorded asfollows.
 type lemon struct {
 	sorted []*state /* Table of states sorted by state number */
-	rule   []rule   /* List of all rules */
+	rule   *rule   /* List of all rules rule组成一个链表，此处是首节点 */
 
 	nstate       int       /* Number of states */
 	nrule        int       /* Number of rules */
@@ -137,13 +137,13 @@ type lemon struct {
 	nterminal    int       /* Number of terminal symbols */
 	symbols      []*symbol /* Sorted array of pointers to symbols */
 	errorcnt     int       /* Number of errors */
-	errsym       *symbol    /* The error symbol */
+	errsym       *symbol   /* The error symbol */
 	name         string    /* Name of the generated parser */
 	arg          string    /* Declaration of the 3th argument to parser */
 	tokentype    string    /* Type of terminal symbols in the parser stack */
-	vartype      int    /* The default type of non-terminal symbols */
+	vartype      string    /* The default type of non-terminal symbols */
 	start        string    /* Name of the start symbol for the grammar */
-	stacksize    int       /* Size of the parser stack */
+	stacksize    string    /* Size of the parser stack (存储为string, 是为了parseonetoken()方便处理)*/
 	include      string    /* Code to put at the start of the C file */
 	includeln    int       /* Line number for start of include code */
 	error        string    /* Code to execute when an error is seen */
@@ -166,6 +166,6 @@ type lemon struct {
 	nconflict    int       /* Number of parsing conflicts */
 	tablesize    int       /* Size of the parse tables */
 	basisflag    int       /* Print only basis configurations */
-	has_fallback int       /* True if any %fallback is seen in the grammer */
-	argv0        string   /* Name of the program */
+	has_fallback bool       /* True if any %fallback is seen in the grammer */
+	argv0        string    /* Name of the program */
 }

@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
+	"util"
 )
 
 // 命令参数
@@ -35,11 +37,12 @@ func main() {
 
 	if *version > 0 {
 		fmt.Println("Gemon version 1.0")
-		os.Exit(0);
+		os.Exit(0)
 	}
 
 	args := os.Args[1:]
 	filename := args[len(args)-1] // 要处理的文件
+	//filename = "C://test.y"
 	if ISOPT(filename) {
 		fmt.Println("no file present")
 		os.Exit(1)
@@ -55,7 +58,30 @@ func main() {
 
 	Symbol_new("$")
 	lem.errsym = Symbol_new("error")
+	Parse(&lem)
+	if lem.errorcnt > 0 {
+		os.Exit(lem.errorcnt)
+	}
+	if lem.rule == nil {
+		fmt.Println("Empty grammar.")
+		os.Exit(1)
+	}
 
-	Symbol_print()
+	//  Count and index the symbols of the grammar
+	lem.nsymbol = Symbol_count()
+	Symbol_new("{default}")
+	lem.symbols = Symbol_arrayof()
+	for i := 0; i <= lem.nsymbol; i++ {
+		lem.symbols[i].index = i
+	}
+	sort.Sort(SortedSymol(lem.symbols))
+	for i := 0; i <= lem.nsymbol; i++ {
+		lem.symbols[i].index = i
+	}
+
+	fmt.Println("after sorted")
+	for i := 1; util.IsUpperChar(lem.symbols[i].name[0]); i++ {
+		lem.nterminal = i
+	}
 
 }

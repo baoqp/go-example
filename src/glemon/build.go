@@ -117,3 +117,50 @@ func  FindFirstSets(lemp *lemon) {
 	}
 
 }
+
+
+func FindStates(lemp *lemon) {
+	var sp *symbol
+	var rp *rule
+
+	Configlist_init()
+
+	// 如果指定了某个非终结符为开始符号则使用该符号，否则使用第一个产生式的非终结符作为开始符号
+	if len(lemp.start) > 0 {
+		sp = Symbol_find(lemp.start)
+		if sp == nil {
+			ErrorMsg(lemp.filename, 0,
+				fmt.Sprintf("The specified start symbol \"%s\" is not in a nonterminal of the grammar. " +
+					" \"%s\" will be used as the start symbol instead.", lemp.start, lemp.rule.lhs.name))
+			lemp.errorcnt++
+			sp = lemp.rule.lhs
+		}
+	} else {
+		sp = lemp.rule.lhs
+	}
+
+	// Make sure the start symbol doesn't occur on the right-hand side of
+    // any rule.  Report an error if it does.  (YACC would generate a new
+    // start symbol in this case.)
+
+	for rp := lemp.rule; rp != nil; rp = rp.next {
+		for i:=0; i<rp.nrhs; i++ {
+			if rp.rhs[i] == sp {
+				ErrorMsg(lemp.filename, 0,
+					fmt.Sprintf("The start symbol \"%s\" occurs on the right-hand side of a rule. " +
+						"This will result in a parser which does not work properly.", sp.name))
+				lemp.errorcnt++
+			}
+		}
+	}
+
+	//The basis configuration set for the first state is all rules
+	// which have the start symbol as their left-hand side
+	for rp=sp.rule; rp!=nil; rp=rp.nextlhs {
+		newcfg := Configlist_addbasis(rp, 0)
+	}
+
+
+}
+
+

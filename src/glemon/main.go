@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-
 )
 
 // 命令参数
@@ -76,7 +75,6 @@ func main() {
 		fmt.Println()
 	}*/
 
-
 	//  Count and index the symbols of the grammar
 	lem.nsymbol = Symbol_count()
 	Symbol_new("{default}")
@@ -90,21 +88,25 @@ func main() {
 		lem.symbols[i].index = i
 	}
 
-
 	lem.nterminal = 0
 	for _, symbol := range lem.symbols {
 		if symbol.typ == TERMINAL {
 			lem.nterminal ++
 		}
 	}
-
-
+F
 	//  Initialize the size for all follow and first sets
 	SetSize(lem.nterminal + 1)
 
 	// Find the precedence for every production rule (that has one)
 	FindRulePrecedences(&lem)
 
+	// Compute the lambda-nonterminals and the first-sets for every nonterminal
 	FindFirstSets(&lem)
+
+	// Compute all LR(0) states.  Also record follow-set propagation
+	// links so that the follow-set can be computed later
+	lem.nstate = 0
+
 
 }

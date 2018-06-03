@@ -355,7 +355,7 @@ func Configtable_init() {
 	}
 
 	x4a = &s_x4{}
-	x4a.size = 128
+	x4a.size = 64
 	x4a.count = 0
 	x4a.tbl = make([]*s_x4node, 0, 64)
 	x4a.ht = make([][]*s_x4node, 64, 64)

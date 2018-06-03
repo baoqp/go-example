@@ -79,8 +79,8 @@ type config struct {
 	bplp   *plink    /* Follow-set backwards propagation links */
 	stp    *state    /* Pointer to state which contains this */
 	status cfgstatus /* used during followset and shift computations */
-	next   *config;  /* Next configuration in the state */
-	bp     *config;  /* The next basis configuration */
+	next   *config   /* Next configuration in the state */
+	bp     *config   /* The next basis configuration */
 }
 
 type e_action int
@@ -129,7 +129,7 @@ type plink struct {
 //The state vector for the entire parser generator is recorded asfollows.
 type lemon struct {
 	sorted []*state /* Table of states sorted by state number */
-	rule   *rule   /* List of all rules rule组成一个链表，此处是首节点 */
+	rule   *rule    /* List of all rules rule组成一个链表，此处是首节点 */
 
 	nstate       int       /* Number of states */
 	nrule        int       /* Number of rules */
@@ -166,6 +166,6 @@ type lemon struct {
 	nconflict    int       /* Number of parsing conflicts */
 	tablesize    int       /* Size of the parse tables */
 	basisflag    int       /* Print only basis configurations */
-	has_fallback bool       /* True if any %fallback is seen in the grammer */
+	has_fallback bool      /* True if any %fallback is seen in the grammer */
 	argv0        string    /* Name of the program */
 }

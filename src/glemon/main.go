@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"util"
+
 )
 
 // 命令参数
@@ -42,7 +42,7 @@ func main() {
 
 	args := os.Args[1:]
 	filename := args[len(args)-1] // 要处理的文件
-	//filename = "C://test.y"
+	filename = "C:\\code\\test.y"
 	if ISOPT(filename) {
 		fmt.Println("no file present")
 		os.Exit(1)
@@ -67,6 +67,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	/*fmt.Println("----print all rule----")
+	for rp:=lem.rule; rp!= nil; rp = rp.next {
+		fmt.Printf("%s ::= ", rp.lhs.name)
+		for _, symbol := range rp.rhs {
+			fmt.Printf(" %s" , symbol.name)
+		}
+		fmt.Println()
+	}*/
+
+
 	//  Count and index the symbols of the grammar
 	lem.nsymbol = Symbol_count()
 	Symbol_new("{default}")
@@ -74,14 +84,27 @@ func main() {
 	for i := 0; i <= lem.nsymbol; i++ {
 		lem.symbols[i].index = i
 	}
+
 	sort.Sort(SortedSymol(lem.symbols))
 	for i := 0; i <= lem.nsymbol; i++ {
 		lem.symbols[i].index = i
 	}
 
-	fmt.Println("after sorted")
-	for i := 1; util.IsUpperChar(lem.symbols[i].name[0]); i++ {
-		lem.nterminal = i
+
+	lem.nterminal = 0
+	for _, symbol := range lem.symbols {
+		if symbol.typ == TERMINAL {
+			lem.nterminal ++
+		}
 	}
+
+
+	//  Initialize the size for all follow and first sets
+	SetSize(lem.nterminal + 1)
+
+	// Find the precedence for every production rule (that has one)
+	FindRulePrecedences(&lem)
+
+	FindFirstSets(&lem)
 
 }

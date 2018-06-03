@@ -2,7 +2,7 @@ package glemon
 
 import (
 	"util"
-	"fmt"
+	"sort"
 )
 
 //--------------------------s_x1--------------------------------//
@@ -10,7 +10,6 @@ import (
 type s_x1 map[string]string
 
 var x1a s_x1
-
 
 func Strsafe(y string) {
 	z := Strsafe_find(y)
@@ -62,7 +61,7 @@ func Symbol_new(x string) *symbol {
 			datatype:   "",
 		}
 
-		if util.IsUpper(x) {
+		if util.IsUpper(x) || x == "$"{
 			sp.typ = TERMINAL
 		} else {
 			sp.typ = NONTERMINAL
@@ -102,16 +101,23 @@ func Symbolcmpp(a *symbol, b *symbol) int {
 	return i1 - i2
 }
 
-type s_x2 map[string]*symbol
+type s_x2value struct {
+	symbol *symbol
+	idx    int
+}
+
+var symbolIdx = 0
+
+type s_x2 map[string]s_x2value
 
 var x2a s_x2
 
 func Symbol_init() {
 	if x2a != nil {
 		return
+
 	}
-	tmp := make(map[string]*symbol)
-	x2a = s_x2(tmp)
+	x2a = make(map[string]s_x2value)
 }
 
 func Symbol_insert(key string, data *symbol) bool {
@@ -121,13 +127,14 @@ func Symbol_insert(key string, data *symbol) bool {
 		return false
 	}
 
-	x2a[key] = data
+	x2a[key] = s_x2value{symbol: data, idx: symbolIdx}
+	symbolIdx++
 	return true
 }
 
 func Symbol_find(key string) *symbol {
 	if _, ok := x2a[key]; ok {
-		return x2a[key]
+		return x2a[key].symbol
 	}
 	return nil
 }
@@ -141,30 +148,36 @@ func Symbol_arrayof() []*symbol {
 		return nil
 	}
 
-	v := make([]*symbol, 0, len(x2a))
+	v := make([]s_x2value, 0, len(x2a))
 	for _, value := range x2a {
 		v = append(v, value)
 	}
-	return v
+	sx := SortedX2value(v)
+	sort.Sort(sx)
+
+	symbols := make([]*symbol, 0, len(v))
+	for _, sx := range v {
+		symbols  = append(symbols, sx.symbol)
+	}
+	return symbols
 }
 
+
+type SortedX2value []s_x2value
+
+func (sx SortedX2value) Len() int      { return len(sx) }
+func (sx SortedX2value) Swap(i, j int) { sx[i], sx[j] = sx[j], sx[i] }
+func (sx SortedX2value) Less(i, j int) bool {
+	return  sx[i].idx - sx[j].idx < 0
+}
 
 type SortedSymol []*symbol
 
-func (ss SortedSymol) Len() int           { return len(ss) }
-func (ss SortedSymol) Swap(i, j int)      { ss[i], ss[j] = ss[j], ss[i] }
+func (ss SortedSymol) Len() int      { return len(ss) }
+func (ss SortedSymol) Swap(i, j int) { ss[i], ss[j] = ss[j], ss[i] }
 func (ss SortedSymol) Less(i, j int) bool {
 	return Symbolcmpp(ss[i], ss[j]) < 0
 }
-
-
-
-func Symbol_print() {
-	for _, value := range x2a {
-		 fmt.Println(value.name)
-	}
-}
-
 
 
 //----------------------------s_x3------------------------------//

@@ -218,7 +218,6 @@ func Parse(gp *lemon) {
 
 //  Parse a single token
 func parseonetoken(psp *pstate) {
-
 	token := psp.tokenstart
 	Strsafe(token)
 	x := []byte(token)
@@ -237,7 +236,9 @@ func parseonetoken(psp *pstate) {
 		} else if util.IsLowerChar(x[0]) { //产生左边
 			psp.lhs = Symbol_new(token)
 			psp.nrhs = 0
+			psp.rhs = make([]*symbol, 0)
 			psp.lhsalias = ""
+			psp.alias = make([]string, 0)
 			psp.state = WAITING_FOR_ARROW
 		} else if x[0] == '{' { // 动作代码
 			if psp.prevrule == nil {
@@ -326,8 +327,6 @@ func parseonetoken(psp *pstate) {
 	case IN_RHS: // 进入产生式右边
 		if x[0] == '.' { // 遇到句点，说明已经到了产生式的几位
 			rp := &rule{}
-			// rp->rhs = (struct symbol**)&rp[1]; TODO ???
-			// rp->rhsalias = (char**)&(rp->rhs[psp->nrhs]);
 			for i := 0; i < psp.nrhs; i++ {
 				rp.rhs = append(rp.rhs, psp.rhs[i])
 				rp.rhsalias = append(rp.rhsalias, psp.alias[i])
@@ -527,7 +526,7 @@ func parseonetoken(psp *pstate) {
 		} else {
 			sp := Symbol_new(token)
 			if psp.fallback == nil {
-				psp.fallback = sp;
+				psp.fallback = sp
 			} else if sp.fallback != nil {
 				ErrorMsg(psp.filename, psp.tokenlineno,
 					fmt.Sprintf("More than one fallback assigned to token %s", token))
@@ -547,6 +546,6 @@ func parseonetoken(psp *pstate) {
 		}
 	}
 
-	fmt.Printf("%s, %d \n", psp.tokenstart, psp.tokenlineno)
-	fmt.Printf("%s \n", "------------------------")
+	//fmt.Printf("%s, %d \n", psp.tokenstart, psp.tokenlineno)
+	//fmt.Printf("%s \n", "------------------------")
 }

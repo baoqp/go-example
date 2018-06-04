@@ -94,7 +94,7 @@ func main() {
 			lem.nterminal ++
 		}
 	}
-F
+
 	//  Initialize the size for all follow and first sets
 	SetSize(lem.nterminal + 1)
 

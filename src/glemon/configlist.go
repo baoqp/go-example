@@ -6,7 +6,7 @@ package glemon
 ** config是其他语法书中的LR item
 */
 
-var freelist []config    // List of free configurations
+var freelist []config   // List of free configurations
 var current *config     // Top of list of configurations
 var currentend **config // Last on list of configs TODO
 var basis *config       // Top of list of basis configs
@@ -17,13 +17,13 @@ func newconfig() *config {
 	var new *config
 	if freelist == nil || len(freelist) == 0 { // TODO 其实是一个对象池的概念
 		amt := 3
-		freelist = make([]config,0)
-		for i:=0; i<amt; i++ {
+		freelist = make([]config, 0)
+		for i := 0; i < amt; i++ {
 			freelist = append(freelist, config{})
 		}
 
-		for i:=0; i < amt -1; i++ {
-			freelist[i].next = &freelist[i + 1]
+		for i := 0; i < amt-1; i++ {
+			freelist[i].next = &freelist[i+1]
 		}
 	}
 	new = &freelist[0]
@@ -36,7 +36,6 @@ func deleteconfig(old *config) { // TODO how to add to head of slice
 	freelist = append(freelist, *old)
 }
 
-
 func Configlist_init() {
 	current = nil
 	currentend = &current
@@ -46,7 +45,7 @@ func Configlist_init() {
 }
 
 // Add a basis configuration to the configuration list
-func Configlist_addbasis(rp *rule, dot int) {
+func Configlist_addbasis(rp *rule, dot int) *config {
 
 	var cfp *config
 	var model *config
@@ -57,7 +56,25 @@ func Configlist_addbasis(rp *rule, dot int) {
 	model.dot = dot
 	cfp = Configtable_find(model)
 	if cfp == nil {
-
+		cfp = newconfig()
+		cfp.rp = rp
+		cfp.dot = dot
+		cfp.fws = SetNew()
+		cfp.stp = nil
+		cfp.fplp = nil
+		cfp.bplp = nil
+		cfp.next = nil
+		cfp.bp = nil
+		*currentend = cfp // TODO  ???
+		currentend = &cfp.next
+		*basisend = cfp // TODO
+		basisend = &cfp.bp
+		Configtable_insert(cfp)
 	}
+	return cfp
+}
+
+
+func Configlist_sortbasis() {
 
 }

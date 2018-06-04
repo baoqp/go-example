@@ -74,7 +74,7 @@ const (
 type config struct {
 	rp     *rule     /* The rule upon which the configuration is based */
 	dot    int       /* The parse point */
-	fws    []rune    /* Follow-set for this configuration only */
+	fws    []byte    /* Follow-set for this configuration only */
 	fplp   *plink    /* Follow-set forward propagation links */
 	bplp   *plink    /* Follow-set backwards propagation links */
 	stp    *state    /* Pointer to state which contains this */

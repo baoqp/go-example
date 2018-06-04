@@ -154,13 +154,29 @@ func FindStates(lemp *lemon) {
 		}
 	}
 
-	//The basis configuration set for the first state is all rules
+	// The basis configuration set for the first state is all rules
 	// which have the start symbol as their left-hand side
 	for rp=sp.rule; rp!=nil; rp=rp.nextlhs {
-		newcfg := Configlist_addbasis(rp, 0)
+		newcfp := Configlist_addbasis(rp, 0)
+		SetAdd(newcfp.fws,0) // TODO ???
 	}
 
-
+	// Compute the first state.  All other states will be
+	// computed automatically during the computation of the first one.
+	// The returned pointer to the first state is not used.
+	getstate(lemp)
 }
 
+// Return a pointer to a state which is described by the configuration
+// list which has been built from calls to Configlist_add.
+func getstate(lemp *lemon) *state {
+	//var cfp *config
+	//var bp *config
 
+	// Extract the sorted basis of the new state.  The basis was constructed
+	// by prior calls to "Configlist_addbasis()".
+
+
+
+	return nil
+}

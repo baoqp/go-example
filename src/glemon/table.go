@@ -3,6 +3,7 @@ package glemon
 import (
 	"util"
 	"sort"
+	"unsafe"
 )
 
 //--------------------------s_x1--------------------------------//
@@ -61,7 +62,7 @@ func Symbol_new(x string) *symbol {
 			datatype:   "",
 		}
 
-		if util.IsUpper(x) || x == "$"{
+		if util.IsUpper(x) || x == "$" {
 			sp.typ = TERMINAL
 		} else {
 			sp.typ = NONTERMINAL
@@ -157,18 +158,17 @@ func Symbol_arrayof() []*symbol {
 
 	symbols := make([]*symbol, 0, len(v))
 	for _, sx := range v {
-		symbols  = append(symbols, sx.symbol)
+		symbols = append(symbols, sx.symbol)
 	}
 	return symbols
 }
-
 
 type SortedX2value []s_x2value
 
 func (sx SortedX2value) Len() int      { return len(sx) }
 func (sx SortedX2value) Swap(i, j int) { sx[i], sx[j] = sx[j], sx[i] }
 func (sx SortedX2value) Less(i, j int) bool {
-	return  sx[i].idx - sx[j].idx < 0
+	return sx[i].idx-sx[j].idx < 0
 }
 
 type SortedSymol []*symbol
@@ -179,7 +179,6 @@ func (ss SortedSymol) Less(i, j int) bool {
 	return Symbolcmpp(ss[i], ss[j]) < 0
 }
 
-
 //----------------------------s_x3------------------------------//
 
 /* Compare two configurations */
@@ -189,6 +188,24 @@ func Configcmp(a *config, b *config) int {
 		x = a.dot - b.dot
 	}
 	return x
+}
+
+// for msort
+func cmpCfg(pointer unsafe.Pointer, pointer2 unsafe.Pointer) int {
+	a1 := (*config)(pointer)
+	a2 := (*config)(pointer2)
+	return Configcmp(a1, a2)
+}
+
+func getNextCfg(p unsafe.Pointer) unsafe.Pointer {
+	a := (*config)(p)
+	return unsafe.Pointer(a.next)
+}
+
+func setNextCfg(p unsafe.Pointer, m unsafe.Pointer) {
+	n := (*config)(p)
+	next := (*config)(m)
+	n.next = next
 }
 
 /* Compare two states */

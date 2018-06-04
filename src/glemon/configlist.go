@@ -9,6 +9,10 @@ import (
 ** Routines to processing a configuration list and building a state
 ** in the LEMON parser generator.
 ** config是其他语法书中的LR item
+** 一个状态包含的所有项目，分为两种类型：
+** 1.基本项目（basis configuration），或者称为核心项目（kernel configuration），是指初始项以及所有分割点不在最左端的项目
+** 2.非基本项目，所有分割点在最左端的非初始项目，即可以用该项目的产生式表示，而省略0处的分割点。所有的非基本项目都可以通过基本
+**   项目的闭包来获得。
 */
 
 var freelist []*config  // List of free configurations

@@ -57,7 +57,7 @@ func setNextAction(p unsafe.Pointer, m unsafe.Pointer) {
 }
 
 func Action_sort(ap *action) *action {
-	return (*action)(msort(ap, cmpAction, getNextAction, setNextAction))
+	return (*action)(msort(unsafe.Pointer(ap), cmpAction, getNextAction, setNextAction))
 }
 
 func Action_ad(app **action, typ e_action, sp *symbol, arg unsafe.Pointer) {

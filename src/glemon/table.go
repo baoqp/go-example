@@ -182,6 +182,7 @@ func (ss SortedSymol) Less(i, j int) bool {
 //----------------------------s_x3------------------------------//
 
 /* Compare two configurations */
+// 先按产生式序号排列，再按分割点排序
 func Configcmp(a *config, b *config) int {
 	x := a.rp.index - b.rp.index
 	if x == 0 {

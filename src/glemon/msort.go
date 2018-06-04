@@ -79,6 +79,7 @@ func msort(list unsafe.Pointer, cmp comparator, getNext getNext, setNext setNext
 		ep = list
 		list = getNext(list)
 		setNext(ep, nil)
+		// 如果s[i]=1，即挂载了一条链表，那么这条链表的长度为2^i
 		for i = 0; i < LISTSIZE-1 && set[i] != nil; i++ {
 			ep = merge(ep, set[i], cmp, getNext, setNext)
 			set[i] = nil

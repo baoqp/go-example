@@ -158,8 +158,12 @@ func FindStates(lemp *lemon) {
 	// which have the start symbol as their left-hand side
 	for rp = sp.rule; rp != nil; rp = rp.nextlhs {
 		newcfp := Configlist_addbasis(rp, 0)
-		SetAdd(newcfp.fws, 0) // TODO ???
+		// 把index为0的symbol(即$)加到follow set
+		// LR(0)分析器的第一个状态的基本项目集，就是做不含有开始符号的所有产生式，
+		// 通常还有第一条产生式左边有开始符号，但是也允许开始符号出现在多条产生式的左边
+		SetAdd(newcfp.fws, 0)
 	}
+	// 基本项目集已经计算好
 
 	// Compute the first state.  All other states will be
 	// computed automatically during the computation of the first one.

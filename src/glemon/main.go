@@ -84,16 +84,16 @@ func main() {
 	}
 
 	sort.Sort(SortedSymol(lem.symbols))
-	for i := 0; i <= lem.nsymbol; i++ {
-		lem.symbols[i].index = i
-	}
 
 	lem.nterminal = 0
-	for _, symbol := range lem.symbols {
-		if symbol.typ == TERMINAL {
+	for i := 0; i <= lem.nsymbol; i++ {
+		lem.symbols[i].index = i
+		if lem.symbols[i].typ == TERMINAL {
 			lem.nterminal ++
 		}
+		fmt.Printf("%s %v \n", lem.symbols[i].name, lem.symbols[i].typ)
 	}
+
 
 	//  Initialize the size for all follow and first sets
 	SetSize(lem.nterminal + 1)

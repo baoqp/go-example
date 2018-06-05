@@ -292,7 +292,7 @@ func FindLinks(lemp *lemon) {
 	for i = 0; i < lemp.nstate; i++ {
 		stp = lemp.sorted[i];
 		for cfp = stp.cfp; cfp != nil; cfp = cfp.next {
-			cfp.stp = stp
+			cfp.stp = stp // 把项目和状态进行绑定
 		}
 	}
 
@@ -303,14 +303,18 @@ func FindLinks(lemp *lemon) {
 		for cfp = stp.cfp; cfp != nil; cfp = cfp.next {
 			for plp = cfp.bplp; plp != nil; plp = plp.next {
 				other = plp.cfp
-				Plink_add(&other.fplp, cfp)
+				Plink_add(&other.fplp, cfp) //TODO ??? 在Configlist_closure方法中也会把一个cfp加到另一个cfp的fplp中，会不会和这里重复
 			}
 		}
 	}
 }
 
-func FindFollowSets(lemp *lemon) {
 
+// Compute all followsets.
+// A followset is the set of all symbols which can come immediately
+// after a configuration.
+
+func FindFollowSets(lemp *lemon) {
 	var cfp *config
 	var plp *plink
 	var change int
@@ -336,6 +340,7 @@ func FindFollowSets(lemp *lemon) {
 						progress = true
 					}
 				}
+				// cfp的所有后继项目的fws都合并了cfp.fws，那么cfp就完成使命了
 				cfp.status = COMPLETE
 			}
 		}
@@ -344,5 +349,35 @@ func FindFollowSets(lemp *lemon) {
 			break
 		}
 	}
+}
+
+// TODO
+// Compute the reduce actions, and resolve conflicts.
+func FindActions(lemp *lemon) {
+	var i,j int
+	var cfp *config
+	var stp *state
+	var sp *symbol
+	var rp *rule
+
+	// Add all of the reduce actions
+	// A reduce action is added for each element of the followset of
+	// a configuration which has its dot at the extreme right.
+	for i=0; i<lemp.nstate; i++ {
+		stp = lemp.sorted[i]
+		for cfp=stp.cfp; cfp!=nil; cfp=cfp.next {
+			if cfp.rp.nrhs == cfp.dot {
+				for j=0; j<lemp.nterminal; j++ {
+					if SetFind(cfp.fws, j) {
+						Action_add(&stp.ap, REDUCE, lemp.symbols[j], unsafe.Pointer(cfp.rp))
+					}
+				}
+			}
+		}
+	}
+
 
 }
+
+
+

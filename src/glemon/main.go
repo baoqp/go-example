@@ -112,7 +112,10 @@ func main() {
 
 	// TODO   print all states and debug
 
+	// Tie up loose ends on the propagation links
+	FindLinks(&lem)
 
-	//  Tie up loose ends on the propagation links
+	// Compute the follow set of every reducible configuration
+	FindFollowSets(&lem)
 
 }

@@ -34,6 +34,7 @@ func SetAdd(s []byte, e int) int {
 	return 0
 }
 
+// 把s2合并到s1中
 func SetUnion(s1, s2 []byte) int {
 	progress := 0
 	for i := 0; i < size; i++ {

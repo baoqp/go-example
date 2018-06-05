@@ -71,6 +71,7 @@ func merge(a unsafe.Pointer, b unsafe.Pointer, cmp comparator, getNext getNext, 
 
 const LISTSIZE = 30
 
+// TODO implment a generic msort gracefully
 func msort(list unsafe.Pointer, cmp comparator, getNext getNext, setNext setNext) unsafe.Pointer {
 	var ep unsafe.Pointer
 	var set [LISTSIZE]unsafe.Pointer

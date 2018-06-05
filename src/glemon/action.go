@@ -60,7 +60,7 @@ func Action_sort(ap *action) *action {
 	return (*action)(msort(unsafe.Pointer(ap), cmpAction, getNextAction, setNextAction))
 }
 
-func Action_ad(app **action, typ e_action, sp *symbol, arg unsafe.Pointer) {
+func Action_add(app **action, typ e_action, sp *symbol, arg unsafe.Pointer) {
 	new := Action_new()
 	new.next = *app
 	*app = new

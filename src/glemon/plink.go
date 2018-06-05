@@ -28,7 +28,7 @@ func Plink_new() *plink {
 // TODO
 func Plink_add(plpp **plink, cfp *config) {
 	new := Plink_new()
-	new.next = *plpp
+	new.next = *plpp // 新节点作为链表首节点
 	*plpp = new
 	new.cfp = cfp
 }

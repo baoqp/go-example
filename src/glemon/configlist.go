@@ -13,11 +13,16 @@ import (
 ** 1.基本项目（basis configuration），或者称为核心项目（kernel configuration），是指初始项以及所有分割点不在最左端的项目
 ** 2.非基本项目，所有分割点在最左端的非初始项目，即可以用该项目的产生式表示，而省略0处的分割点。所有的非基本项目都可以通过基本
 **   项目的闭包来获得。
+**
+** 计算Follow Set的3条规则
+** 1. 如果start是开始符号，那么$在Follow(start)中
+** 2. 如果有产生式 A -> pBq，那么 FIRST(q) 除了 Є 都在 Follow(A)中
+** 3. 如果存在产生式 A->pB 或 A->pBq，其中FIRST(q) 包含 Є， 那么 FOLLOW(B) 或包含Follow(A)所有符号
 */
 
 var freelist []*config  // List of free configurations
 var current *config     // Top of list of configurations
-var currentend **config // Last on list of configs TODO currentend指向的是current的后一个节点的指针
+var currentend **config // Last on list of configs TODO currentend指向的是current的后一个节点的指针？？ current所在列表的最后一个项目之后，即代表列表的末尾 ？？？
 var basis *config       // Top of list of basis configs
 var basisend **config   // End of list of basis configs TODO
 
@@ -141,7 +146,11 @@ func Configlist_closure(lemp *lemon) {
 				lemp.errorcnt++;
 			}
 			for newrp = sp.rule; newcfp != nil; newrp = newrp.nextlhs {
+				// Configlist_add会把newcfp加到以current为表头的链表的末尾，因此在循环的同时，链表也在增长，
+				// 之后会在外围的for循环中访问到，因此当外围的循环结束时，current所在的链表上所有项目就组成了一个状态
 				newcfp = Configlist_add(newrp, 0)
+
+				// 更新newcfp的FollowSet， 计算产生式的第二条规则
 				for i = dot + 1; i < rp.nrhs; i++ {
 					xsp = rp.rhs[i]
 					if xsp.typ == TERMINAL {
@@ -154,6 +163,8 @@ func Configlist_closure(lemp *lemon) {
 						}
 					}
 				}
+
+				// 计算产生式的第三条规则
 				if i == rp.nrhs {
 					Plink_add(&cfp.fplp, newcfp) // TODO
 				}

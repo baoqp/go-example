@@ -107,6 +107,12 @@ func main() {
 	// Compute all LR(0) states.  Also record follow-set propagation
 	// links so that the follow-set can be computed later
 	lem.nstate = 0
+	FindStates(&lem)
+	lem.sorted = State_arrayof()
 
+	// TODO   print all states and debug
+
+
+	//  Tie up loose ends on the propagation links
 
 }

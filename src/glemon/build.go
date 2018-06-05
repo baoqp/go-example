@@ -1,6 +1,9 @@
 package glemon
 
-import "fmt"
+import (
+	"fmt"
+	"unsafe"
+)
 
 /*
 ** Routines to construction the finite state machine for the LEMON
@@ -158,7 +161,7 @@ func FindStates(lemp *lemon) {
 	// which have the start symbol as their left-hand side
 	for rp = sp.rule; rp != nil; rp = rp.nextlhs {
 		newcfp := Configlist_addbasis(rp, 0)
-		// 把index为0的symbol(即$)加到follow set
+		// 把index为0的symbol(即$)加到follow set， 即计算产生式的第一条规则
 		// LR(0)分析器的第一个状态的基本项目集，就是做不含有开始符号的所有产生式，
 		// 通常还有第一条产生式左边有开始符号，但是也允许开始符号出现在多条产生式的左边
 		SetAdd(newcfp.fws, 0)
@@ -186,9 +189,10 @@ func getstate(lemp *lemon) *state {
 	// Get a state with the same basis
 	stp = State_find(bp)
 	if stp != nil {
-		//A state with the same basis already exists!  Copy all the follow-set
+		// A state with the same basis already exists!  Copy all the follow-set
 		// propagation links from the state under construction into the
 		// preexisting state, then return a pointer to the preexisting state
+		// x,y两个作为表头的两个链表的基本项目是一样的，那么它们闭包运算的所得的项目集也是一样的。
 		x := bp
 		y := stp.bp
 		for ; x != nil && y != nil; {
@@ -207,18 +211,18 @@ func getstate(lemp *lemon) *state {
 		// This really is a new state.  Construct all the details
 		Configlist_closure(lemp);  // Compute the configuration closure
 		Configlist_sort();         // Sort the configuration closure
-		cfp = Configlist_return(); // Get a pointer to the config list
+		cfp = Configlist_return(); // Get a pointer to the config list 此时已经有一个新的状态了
 		stp = State_new();         // A new state structure
 		stp.bp = bp                // Remember the configuration basis
 		stp.cfp = cfp              // Remember the configuration closure
 		stp.index = lemp.nstate    // Every state gets a sequence number
-		lemp.nstate ++
-		stp.ap = nil              // No actions, yet.
-		State_insert(stp, stp.bp) //Add to the state table
-		buildshifts(lemp, stp)    // Recursively compute successor states
+		lemp.nstate ++             //
+		stp.ap = nil               // No actions, yet.
+		State_insert(stp, stp.bp)  // Add to the state table
+		buildshifts(lemp, stp)     // Recursively compute successor states
 	}
 
-	return nil
+	return stp
 }
 
 func buildshifts(lemp *lemon, stp *state) {
@@ -243,7 +247,7 @@ func buildshifts(lemp *lemon, stp *state) {
 			continue
 		}
 		Configlist_reset()
-		sp = cfp.rp.rhs[cfp.dot] // Symbol after the dot
+		sp = cfp.rp.rhs[cfp.dot] // Symbol after the dot 分割点之后的符号，即要进行移进（shift）的符号
 
 		// For every configuration in the state "stp" which has the symbol "sp"
 		// following its dot, add the same configuration to the basis set under
@@ -256,20 +260,89 @@ func buildshifts(lemp *lemon, stp *state) {
 				continue
 			}
 			bsp = bcfp.rp.rhs[bcfp.dot]
-			if bsp != sp {  // Must be same as for "cfp"
+			if bsp != sp { // Must be same as for "cfp"
 				continue
 			}
 			bcfp.status = COMPLETE
-			new = Configlist_addbasis(bcfp.rp, bcfp.dot +1)
-			Plink_add(&new.bplp, bcfp)
+			new = Configlist_addbasis(bcfp.rp, bcfp.dot+1) // 移进之后就有了一个新的基本项目，加入到基本项目集合中
+			Plink_add(&new.bplp, bcfp) // new是bcfp经过shift符号bsp得来的，用bcfp构建新的Plink挂载到new的bplp列表上
+			                           // 把new称为“后继”项目，bcfp称为“前承”项目
 		}
 
 		// Get a pointer to the state described by the basis configuration set
 		// constructed in the preceding loop
-		newstp = getstate(lemp)
+		newstp = getstate(lemp) // 对新的基本项目集调用getstate
 
-		//The state "newstp" is reached from the state "stp" by a shift action
-		// on the symbol "sp
-		// Action_add(&stp->ap,SHIFT,sp,(char *)newstp) //TODO
+		// The state "newstp" is reached from the state "stp" by a shift action
+		// on the symbol "sp 记录shift动作
+		Action_add(&stp.ap, SHIFT, sp, unsafe.Pointer(newstp)) // TODO
 	}
+}
+
+// Construct the propagation links
+func FindLinks(lemp *lemon) {
+	var i int
+	var cfp, other *config
+	var stp *state
+	var plp *plink
+
+	// Housekeeping detail:
+	// Add to every propagate link a pointer back to the state to
+	// which the link is attached.
+	for i = 0; i < lemp.nstate; i++ {
+		stp = lemp.sorted[i];
+		for cfp = stp.cfp; cfp != nil; cfp = cfp.next {
+			cfp.stp = stp
+		}
+	}
+
+	// Convert all backlinks into forward links.  Only the forward
+	// links are used in the follow-set computation.
+	for i = 0; i < lemp.nstate; i++ {
+		stp = lemp.sorted[i];
+		for cfp = stp.cfp; cfp != nil; cfp = cfp.next {
+			for plp = cfp.bplp; plp != nil; plp = plp.next {
+				other = plp.cfp
+				Plink_add(&other.fplp, cfp)
+			}
+		}
+	}
+}
+
+func FindFollowSets(lemp *lemon) {
+
+	var cfp *config
+	var plp *plink
+	var change int
+
+	for i := 0; i < lemp.nstate; i++ {
+		for cfp = lemp.sorted[i].cfp; cfp != nil; cfp = cfp.next {
+			cfp.status = INCOMPLETE
+		}
+	}
+
+	for {
+		progress := false
+		for i := 0; i < lemp.nstate; i++ {
+			for cfp = lemp.sorted[i].cfp; cfp != nil; cfp = cfp.next {
+				if cfp.status == COMPLETE {
+					continue
+				}
+
+				for plp = cfp.fplp; plp != nil; plp = plp.next {
+					change = SetUnion(plp.cfp.fws, cfp.fws)
+					if change > 0 {
+						plp.cfp.status = INCOMPLETE
+						progress = true
+					}
+				}
+				cfp.status = COMPLETE
+			}
+		}
+
+		if !progress {
+			break
+		}
+	}
+
 }

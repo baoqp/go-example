@@ -23,6 +23,7 @@ func SetFree(s []byte) {
 	s = s[:0]
 }
 
+
 /* Add a new element to the set.  Return TRUE if the element was added
 ** and FALSE if it was already there. */
 func SetAdd(s []byte, e int) int {

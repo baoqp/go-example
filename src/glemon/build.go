@@ -265,8 +265,8 @@ func buildshifts(lemp *lemon, stp *state) {
 			}
 			bcfp.status = COMPLETE
 			new = Configlist_addbasis(bcfp.rp, bcfp.dot+1) // 移进之后就有了一个新的基本项目，加入到基本项目集合中
-			Plink_add(&new.bplp, bcfp) // new是bcfp经过shift符号bsp得来的，用bcfp构建新的Plink挂载到new的bplp列表上
-			                           // 把new称为“后继”项目，bcfp称为“前承”项目
+			Plink_add(&new.bplp, bcfp)                     // new是bcfp经过shift符号bsp得来的，用bcfp构建新的Plink挂载到new的bplp列表上
+			// 把new称为“后继”项目，bcfp称为“前承”项目
 		}
 
 		// Get a pointer to the state described by the basis configuration set
@@ -309,7 +309,6 @@ func FindLinks(lemp *lemon) {
 	}
 }
 
-
 // Compute all followsets.
 // A followset is the set of all symbols which can come immediately
 // after a configuration.
@@ -351,10 +350,9 @@ func FindFollowSets(lemp *lemon) {
 	}
 }
 
-// TODO
 // Compute the reduce actions, and resolve conflicts.
 func FindActions(lemp *lemon) {
-	var i,j int
+	var i, j int
 	var cfp *config
 	var stp *state
 	var sp *symbol
@@ -363,12 +361,12 @@ func FindActions(lemp *lemon) {
 	// Add all of the reduce actions
 	// A reduce action is added for each element of the followset of
 	// a configuration which has its dot at the extreme right.
-	for i=0; i<lemp.nstate; i++ {
+	for i = 0; i < lemp.nstate; i++ {
 		stp = lemp.sorted[i]
-		for cfp=stp.cfp; cfp!=nil; cfp=cfp.next {
+		for cfp = stp.cfp; cfp != nil; cfp = cfp.next {
 			if cfp.rp.nrhs == cfp.dot {
-				for j=0; j<lemp.nterminal; j++ {
-					if SetFind(cfp.fws, j) {
+				for j = 0; j < lemp.nterminal; j++ {
+					if cfp.fws[j] > 0 {
 						Action_add(&stp.ap, REDUCE, lemp.symbols[j], unsafe.Pointer(cfp.rp))
 					}
 				}
@@ -376,8 +374,116 @@ func FindActions(lemp *lemon) {
 		}
 	}
 
+	// Add the accepting token
+	if len(lemp.start) > 0 {
+		sp = Symbol_find(lemp.start)
+		if sp == nil {
+			sp = lemp.rule.lhs
+		}
+	} else {
+		sp = lemp.rule.lhs
+	}
+
+	// Add to the first state (which is always the starting state of the finite state
+	// machine) an action to ACCEPT if the lookahead is the start nonterminal.
+	Action_add(&lemp.sorted[0].ap, ACCEPT, sp, 0)
+
+	// Resolve conflicts
+	for i = 0; i < lemp.nstate; i++ {
+		stp := lemp.sorted[i]
+		// assert(stp.ap  != nil)
+		stp.ap = Action_sort(stp.ap)
+		for ap := stp.ap; ap != nil && ap.next != nil; ap = ap.next {
+			for nap := ap.next; nap != nil && nap.sp == ap.sp; nap = nap.next {
+				// The two actions "ap" and "nap" have the same lookahead.
+				// Figure out which one should be used
+				lemp.nconflict += resolve_conflict(ap, nap, lemp.errsym)
+			}
+		}
+	}
+
+	// Report an error for each rule that can never be reduced.
+	for rp = lemp.rule; rp != nil; rp = rp.next {
+		rp.canReduce = false
+	}
+	for i = 0; i < lemp.nstate; i++ {
+		for ap := lemp.sorted[i].ap; ap != nil && ap.next != nil; ap = ap.next {
+			if ap.typ == REDUCE {
+				ap.rp.canReduce = true
+			}
+		}
+	}
+	for rp = lemp.rule; rp != nil; rp = rp.next {
+		if rp.canReduce {
+			continue
+		}
+		ErrorMsg(lemp.filename, rp.ruleline, "This rule can not be reduced.\n")
+		lemp.errorcnt ++
+	}
 
 }
 
+/* Resolve a conflict between the two given actions.  If the
+** conflict can't be resolve, return non-zero.
+**
+** NO LONGER TRUE:
+**   To resolve a conflict, first look to see if either action
+**   is on an error rule.  In that case, take the action which
+**   is not associated with the error rule.  If neither or both
+**   actions are associated with an error rule, then try to
+**   use precedence to resolve the conflict.
+**
+** If either action is a SHIFT, then it must be apx.  This
+** function won't work if apx->type==REDUCE and apy->type==SHIFT.
+*/
+func resolve_conflict(apx *action, apy *action, errsym *symbol) int {
+	var spx, spy *symbol
+	var errcnt = 0
+	//assert apx.sp==apy.sp  // Otherwise there would be no conflict
+	if apx.typ == SHIFT && apy.typ == REDUCE {
+		spx = apx.sp
+		spy = apy.rp.precsym
+		if spy == nil || spx.prec < 0 || spy.prec < 0 {
+			// Not enough precedence information.
+			apy.typ = CONFLICT
+			errcnt ++
+		} else if spx.prec > spy.prec { // Lower precedence wins
+			apy.typ = RD_RESOLVED
+		} else if spx.prec < spy.prec {
+			apx.typ = SH_RESOLVED
+		} else if spx.prec == spy.prec && spx.assoc == RIGHT {
+			apy.typ = RD_RESOLVED
+		} else if spx.prec == spy.prec && spx.assoc == LEFT {
+			apx.typ = SH_RESOLVED
+		} else {
+			// assert spx.prec == spy.prec && spx.assoc == NONE
+			apy.typ = CONFLICT
+			errcnt ++
+		}
+	} else if apx.typ == REDUCE && apy.typ == REDUCE {
+		spx = apx.rp.precsym
+		spy = apy.rp.precsym
+		if spx == nil || spy == nil || spx.prec < 0 || spy.prec < 0 || spx.prec == spy.prec {
+			apy.typ = CONFLICT
+			errcnt++
+		} else if spx.prec > spy.prec {
+			apy.typ = RD_RESOLVED
+		} else if spx.prec < spy.prec {
+			apx.typ = RD_RESOLVED
+		}
+	} else {
+		/*assert(
+			apx.typ == SH_RESOLVED ||
+			apx.typ == RD_RESOLVED ||
+			apx.typ == CONFLICT ||
+			apy.typ == SH_RESOLVED ||
+			apy.typ == RD_RESOLVED ||
+			apy.typ == CONFLICT
+		)*/
 
-
+		// The REDUCE/SHIFT case cannot happen because SHIFTs come before
+		// REDUCEs on the list.  If we reach this point it must be because
+		// the parser conflict had already been resolved.
+	}
+	return errcnt
+}

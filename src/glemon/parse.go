@@ -406,6 +406,7 @@ func parseonetoken(psp *pstate) {
 			} else if token == "token_prefix" {
 				psp.declargslot = &psp.gp.tokenprefix
 			} else if token == "syntax_error" {
+				psp.declargslot = &psp.gp.error
 				psp.decllnslot = &psp.gp.errorln
 			} else if token == "parse_accept" {
 				psp.declargslot = &psp.gp.accept
@@ -488,7 +489,7 @@ func parseonetoken(psp *pstate) {
 		}
 	case WAITING_FOR_DECL_ARG:
 		if x[0] == '{' || x[0] == '"' || util.IsAlumn(x[0]) {
-			if len(*(psp.declargslot)) > 0 {
+			if  psp.declargslot != nil && len(*psp.declargslot) > 0 {
 				errmsg := token
 				if x[0] == '"' {
 					errmsg = token[1:]
@@ -499,7 +500,8 @@ func parseonetoken(psp *pstate) {
 				psp.errorcnt++
 				psp.state = RESYNC_AFTER_DECL_ERROR
 			} else {
-				*(psp.declargslot) = token
+
+				*psp.declargslot = token
 				if x[0] == '"' || x[0] == '{' {
 					*(psp.declargslot) = token[1:]
 				}

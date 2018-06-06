@@ -7,6 +7,8 @@ import (
 	"sort"
 )
 
+const TEST = true
+
 // 命令参数
 var (
 	basisflag  *int
@@ -41,7 +43,7 @@ func main() {
 
 	args := os.Args[1:]
 	filename := args[len(args)-1] // 要处理的文件
-	filename = "C:\\code\\test.y"
+	filename = "C:\\personal\\lemon\\ex1.y"
 	if ISOPT(filename) {
 		fmt.Println("no file present")
 		os.Exit(1)
@@ -94,7 +96,6 @@ func main() {
 		fmt.Printf("%s %v \n", lem.symbols[i].name, lem.symbols[i].typ)
 	}
 
-
 	//  Initialize the size for all follow and first sets
 	SetSize(lem.nterminal + 1)
 
@@ -117,5 +118,24 @@ func main() {
 
 	// Compute the follow set of every reducible configuration
 	FindFollowSets(&lem)
+
+	for i := 0; i < lem.nstate; i++ {
+		for cfp := lem.sorted[i].cfp; cfp != nil; cfp = cfp.next {
+			fmt.Println(cfp.fws)
+		}
+	}
+
+	// Compute the action tables
+	FindActions(&lem);
+	if *compress == 0 {
+		//CompressTables(&lem)
+	}
+
+	if *quiet > 0 {
+		ReportOutput(&lem)
+	}
+
+	// Generate the source code for the parser
+	// ReportTable(&lem, *mhflag);
 
 }

@@ -33,3 +33,9 @@ func Test6(t *testing.T) {
 
 
 }
+
+
+func Test7(t *testing.T) {
+	fmt.Printf("%*s shift  %d", 16, "jelly", 4 )
+}
+

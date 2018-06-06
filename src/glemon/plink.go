@@ -21,7 +21,7 @@ func Plink_new() *plink {
 		}
 	}
 	new = plink_freelist[0]
-	freelist = freelist[1:]
+	plink_freelist = plink_freelist[1:]
 	return new
 }
 

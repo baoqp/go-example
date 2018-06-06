@@ -31,7 +31,7 @@ func actioncmp(ap1 *action, ap2 *action) int {
 		rc = int(ap1.typ - ap2.typ)
 	}
 
-	if rc == 1 {
+	if rc == 0 {
 		//assert( ap1.type==REDUCE || ap1.type==RD_RESOLVED || ap1.type==CONFLICT);
 		//assert( ap2.type==REDUCE || ap2.type==RD_RESOLVED || ap2.type==CONFLICT);
 		rc = ap1.rp.index - ap2.rp.index

@@ -352,7 +352,7 @@ func FindFollowSets(lemp *lemon) {
 
 // Compute the reduce actions, and resolve conflicts.
 func FindActions(lemp *lemon) {
-	var i, j int
+
 	var cfp *config
 	var stp *state
 	var sp *symbol
@@ -361,11 +361,11 @@ func FindActions(lemp *lemon) {
 	// Add all of the reduce actions
 	// A reduce action is added for each element of the followset of
 	// a configuration which has its dot at the extreme right.
-	for i = 0; i < lemp.nstate; i++ {
+	for i := 0; i < lemp.nstate; i++ {
 		stp = lemp.sorted[i]
 		for cfp = stp.cfp; cfp != nil; cfp = cfp.next {
 			if cfp.rp.nrhs == cfp.dot {
-				for j = 0; j < lemp.nterminal; j++ {
+				for j := 0; j < lemp.nterminal; j++ {
 					if cfp.fws[j] > 0 {
 						Action_add(&stp.ap, REDUCE, lemp.symbols[j], unsafe.Pointer(cfp.rp))
 					}
@@ -386,14 +386,15 @@ func FindActions(lemp *lemon) {
 
 	// Add to the first state (which is always the starting state of the finite state
 	// machine) an action to ACCEPT if the lookahead is the start nonterminal.
-	Action_add(&lemp.sorted[0].ap, ACCEPT, sp, 0)
+	Action_add(&lemp.sorted[0].ap, ACCEPT, sp, nil)
 
 	// Resolve conflicts
-	for i = 0; i < lemp.nstate; i++ {
+	for i := 0; i < lemp.nstate; i++ {
 		stp := lemp.sorted[i]
 		// assert(stp.ap  != nil)
 		stp.ap = Action_sort(stp.ap)
 		for ap := stp.ap; ap != nil && ap.next != nil; ap = ap.next {
+			// 同一个lookahead token可以触发两个动作，那么就会有冲突
 			for nap := ap.next; nap != nil && nap.sp == ap.sp; nap = nap.next {
 				// The two actions "ap" and "nap" have the same lookahead.
 				// Figure out which one should be used
@@ -406,13 +407,14 @@ func FindActions(lemp *lemon) {
 	for rp = lemp.rule; rp != nil; rp = rp.next {
 		rp.canReduce = false
 	}
-	for i = 0; i < lemp.nstate; i++ {
+	for i := 0; i < lemp.nstate; i++ {
 		for ap := lemp.sorted[i].ap; ap != nil && ap.next != nil; ap = ap.next {
 			if ap.typ == REDUCE {
 				ap.rp.canReduce = true
 			}
 		}
 	}
+	// 对无法规约的产生式报告错误信息
 	for rp = lemp.rule; rp != nil; rp = rp.next {
 		if rp.canReduce {
 			continue
@@ -435,23 +437,31 @@ func FindActions(lemp *lemon) {
 **
 ** If either action is a SHIFT, then it must be apx.  This
 ** function won't work if apx->type==REDUCE and apy->type==SHIFT.
+** 不可能出现具有相同lookahead token的两个移进操作。因为在一个状态中，对于一个入栈
+** 符号，只有一个移进动作。
+** 不可能出现先归约后移进的两个动作，这是由于移进为工作链表ap进行排序了，SHIFT在ACCEPT
+** 之前，ACCEPT在REDUCE之前。因为apx和apy，要么前者是移进、后者为归约，或者都为归约。
+**
+** 总之，当移进和归约之间无法确定时，默认采用移进策略；当归约与归约之间无法确定时，采用居前的
+** 产生式进行归约。这种代码中可以看出来，当无法解决冲突时，排在后面的apy的标志改为conflict。
+** 这么做与动作链表的排序有关，排序时
 */
 func resolve_conflict(apx *action, apy *action, errsym *symbol) int {
 	var spx, spy *symbol
 	var errcnt = 0
 	//assert apx.sp==apy.sp  // Otherwise there would be no conflict
-	if apx.typ == SHIFT && apy.typ == REDUCE {
+	if apx.typ == SHIFT && apy.typ == REDUCE { // 需要使用符号的优先级来解决冲突
 		spx = apx.sp
 		spy = apy.rp.precsym
 		if spy == nil || spx.prec < 0 || spy.prec < 0 {
-			// Not enough precedence information.
+			// Not enough precedence information. 没有优先级信息
 			apy.typ = CONFLICT
 			errcnt ++
 		} else if spx.prec > spy.prec { // Lower precedence wins
-			apy.typ = RD_RESOLVED
+			apy.typ = RD_RESOLVED // 优先级小的赢(TODO ???)，因此修改apy的动作标志，表示归约被解除
 		} else if spx.prec < spy.prec {
 			apx.typ = SH_RESOLVED
-		} else if spx.prec == spy.prec && spx.assoc == RIGHT {
+		} else if spx.prec == spy.prec && spx.assoc == RIGHT { // 优先级相同，使用结合性
 			apy.typ = RD_RESOLVED
 		} else if spx.prec == spy.prec && spx.assoc == LEFT {
 			apx.typ = SH_RESOLVED

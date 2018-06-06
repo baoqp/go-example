@@ -96,7 +96,7 @@ func Configlist_add(rp *rule, dot int) *config {
 // Add a basis configuration to the configuration list
 func Configlist_addbasis(rp *rule, dot int) *config {
 	var cfp *config
-	var model *config
+	model := &config{}
 
 	//assert(basisend != 0);
 	//assert(currentend != 0);

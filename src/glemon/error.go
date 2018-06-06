@@ -4,7 +4,7 @@ import "fmt"
 
 const (
 	ERRMSGSIZE  = 10000
-	LINEWIDTH   = 79
+	LINEWIDTH   = 200
 	PREFIXLIMIT = 30
 )
 
@@ -51,7 +51,7 @@ func findbreak(msg []byte, min, max int) int {
 	i := min
 	spot := min
 	var c byte
-	for ; i <= max; i++ {
+	for ; i <= max && i<len(msg); i++ {
 		c = msg[i]
 		if c == '\t' {
 			msg[i] = ' '

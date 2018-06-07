@@ -47,7 +47,12 @@ func newconfig() *config {
 
 // The configuration "old" is no longer use
 func deleteconfig(old *config) { // TODO how to add to head of slice
-	old.next = freelist[0]
+	if len(freelist) > 0 {
+		old.next = freelist[0]
+	} else {
+		old.next = nil
+	}
+
 	freelist = append([]*config{old}, freelist...)
 }
 
@@ -70,11 +75,11 @@ func Configlist_reset() {
 // Add another configuration to the configuration list
 func Configlist_add(rp *rule, dot int) *config {
 	var cfp *config
-	var model *config
-
+	var model =&config{
+		rp:rp,
+		dot:dot,
+	}
 	//assert(currentend != 0);
-	model.rp = rp
-	model.dot = dot
 	cfp = Configtable_find(model)
 	if cfp == nil {
 		cfp = newconfig()
@@ -145,7 +150,7 @@ func Configlist_closure(lemp *lemon) {
 					fmt.Sprintf("Nonterminal \"%s\" has no rules.", sp.name))
 				lemp.errorcnt++;
 			}
-			for newrp = sp.rule; newcfp != nil; newrp = newrp.nextlhs {
+			for newrp = sp.rule; newrp != nil; newrp = newrp.nextlhs {
 				// Configlist_add会把newcfp加到以current为表头的链表的末尾，因此在循环的同时，链表也在增长，
 				// 之后会在外围的for循环中访问到，因此当外围的循环结束时，current所在的链表上所有项目就组成了一个状态
 				newcfp = Configlist_add(newrp, 0)

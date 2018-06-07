@@ -88,7 +88,6 @@ func FindFirstSets(lemp *lemon) {
 	}
 	fmt.Printf("symbol lambda end----- \n")*/
 
-	fmt.Printf("Now compute all first sets \n ")
 	// Now compute all first sets
 	for {
 		var s1, s2 *symbol
@@ -145,7 +144,7 @@ func FindStates(lemp *lemon) {
 	// Make sure the start symbol doesn't occur on the right-hand side of
 	// any rule.  Report an error if it does.  (YACC would generate a new
 	// start symbol in this case.)
-
+	/*
 	for rp := lemp.rule; rp != nil; rp = rp.next {
 		for i := 0; i < rp.nrhs; i++ {
 			if rp.rhs[i] == sp {
@@ -156,6 +155,8 @@ func FindStates(lemp *lemon) {
 			}
 		}
 	}
+	*/
+
 
 	// The basis configuration set for the first state is all rules
 	// which have the start symbol as their left-hand side

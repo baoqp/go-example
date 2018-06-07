@@ -7,7 +7,7 @@ import (
 	"sort"
 )
 
-const TEST = true
+const TEST = false
 
 // 命令参数
 var (
@@ -68,15 +68,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	/*fmt.Println("----print all rule----")
-	for rp:=lem.rule; rp!= nil; rp = rp.next {
-		fmt.Printf("%s ::= ", rp.lhs.name)
-		for _, symbol := range rp.rhs {
-			fmt.Printf(" %s" , symbol.name)
-		}
-		fmt.Println()
-	}*/
-
 	//  Count and index the symbols of the grammar
 	lem.nsymbol = Symbol_count()
 	Symbol_new("{default}")
@@ -93,7 +84,7 @@ func main() {
 		if lem.symbols[i].typ == TERMINAL {
 			lem.nterminal ++
 		}
-		fmt.Printf("%s %v \n", lem.symbols[i].name, lem.symbols[i].typ)
+
 	}
 
 	//  Initialize the size for all follow and first sets
@@ -105,13 +96,20 @@ func main() {
 	// Compute the lambda-nonterminals and the first-sets for every nonterminal
 	FindFirstSets(&lem)
 
+	/*
+	fmt.Println("---println first set---")
+	for _, symbol := range lem.symbols {
+		fmt.Printf("%s %d, %v \n", symbol.name, symbol.typ, symbol.firstset)
+	}
+	*/
+
 	// Compute all LR(0) states.  Also record follow-set propagation
 	// links so that the follow-set can be computed later
 	lem.nstate = 0
 	FindStates(&lem)
 	lem.sorted = State_arrayof()
 
-	// TODO   print all states and debug
+	//-------------------OK tag-------------------------------//
 
 	// Tie up loose ends on the propagation links
 	FindLinks(&lem)
@@ -119,23 +117,56 @@ func main() {
 	// Compute the follow set of every reducible configuration
 	FindFollowSets(&lem)
 
+	/*fmt.Println("---println fws---")
 	for i := 0; i < lem.nstate; i++ {
-		for cfp := lem.sorted[i].cfp; cfp != nil; cfp = cfp.next {
-			fmt.Println(cfp.fws)
+		stp := lem.sorted[i]
+		fmt.Printf("State %d:\n", stp.index)
+		cfp := stp.cfp
+		for cfp != nil {
+			if cfp.dot == cfp.rp.nrhs {
+				buf := fmt.Sprintf("(%d)", cfp.rp.index)
+				fmt.Printf("    %5s ", buf)
+			} else {
+				fmt.Printf("          ")
+			}
+			PrintConfig(cfp)
+			fmt.Printf("\n")
+			cfp = cfp.next
 		}
+		fmt.Printf("\n")
 	}
+	*/
 
 	// Compute the action tables
 	FindActions(&lem);
 	if *compress == 0 {
-		//CompressTables(&lem)
+		CompressTables(&lem)
 	}
 
-	if *quiet > 0 {
+	// Generate a report of the parser generated.  (the "y.output" file)
+	if *quiet == 1 {
 		ReportOutput(&lem)
 	}
+
 
 	// Generate the source code for the parser
 	// ReportTable(&lem, *mhflag);
 
+}
+
+// print config and fws
+func PrintConfig(cfp *config) {
+	rp := cfp.rp
+	fmt.Printf("%s ::=", rp.lhs.name)
+	for i := 0; i <= rp.nrhs; i++ {
+		if i == cfp.dot {
+			fmt.Printf(" *")
+		}
+		if i == rp.nrhs {
+			break;
+		}
+		fmt.Printf(" %s", rp.rhs[i].name)
+	}
+
+	fmt.Printf(" %v", cfp.fws)
 }

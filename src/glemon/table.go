@@ -367,11 +367,9 @@ type s_x4node struct {
 var x4a *s_x4
 
 func Configtable_init() {
-
 	if x4a != nil {
 		return
 	}
-
 	x4a = &s_x4{}
 	x4a.size = 64
 	x4a.count = 0

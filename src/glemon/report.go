@@ -41,13 +41,13 @@ func file_open(lemp *lemon, suffix string, flag int) *os.File {
 func ConfigPrint(fp *os.File, cfp *config) {
 	rp := cfp.rp
 	fmt.Fprintf(fp, "%s ::=", rp.lhs.name)
-	for i := 0; i < rp.nrhs; i++ {
+	for i := 0; i <= rp.nrhs; i++ {
 		if i == cfp.dot {
 			fmt.Fprintf(fp, " *")
 		}
-		/*if i == rp.nrhs {
+		if i == rp.nrhs {
 			break;
-		}*/
+		}
 		fmt.Fprintf(fp, " %s", rp.rhs[i].name)
 	}
 }
@@ -76,10 +76,9 @@ func PlinkPrint(out *os.File, plp *plink, tag string) {
 
 func PrintAction(ap *action, fp *os.File, indent int) bool {
 	result := true
-
 	switch ap.typ {
 	case SHIFT:
-		fmt.Fprintf(fp, "%*s shift  %d", indent, ap.sp.name, ap.stp.index)
+		fmt.Fprintf(fp, "%*s shift   %d", indent, ap.sp.name, ap.stp.index)
 	case REDUCE:
 		fmt.Fprintf(fp, "%*s reduce  %d", indent, ap.sp.name, ap.rp.index)
 	case ACCEPT:
@@ -184,8 +183,8 @@ func ReportHeader(lemp *lemon) {
 // In this version, we take the most frequent REDUCE action and make
 // it the default.  Only default a reduce if there are more than one.
 // 把每个状态最频繁出现的归约动作作为该状态的默认（default）动作
-//
 func CompressTables(lemp *lemon) {
+	fmt.Println("---compress table---")
 	var stp *state
 	var ap, ap2 *action
 	var rp, rp2, rbest *rule

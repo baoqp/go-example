@@ -353,6 +353,39 @@ func tplt_print(out *os.File, lemp *lemon, str string, strln int, lineno *int) {
 	*lineno += 2
 }
 
+// emits code for the destructor for the symbol sp TODO do not need destructor
+func emit_destructor_code(out *os.File, sp *symbol, lemp *lemon, lineno *int) {
+
+}
+
+// TODO
+// Generate code which executes when the rule "rp" is reduced.  Write
+// the code to "out".  Make sure lineno stays up-to-date.
+func emit_code(out *os.File, rp *rule, lemp *lemon, lineno int) {
+	var cp, xp uint8
+
+
+
+	if len(rp.code) > 0 {
+		fmt.Fprintf(out, "#line %d \"%s\"\n{", rp.line, lemp.filename)
+		for i:=0; i<len(rp.code); i++ {
+			cp = rp.code[i]
+			if util.IsAlphaChar(cp) &&
+				(i==0 || (!util.IsAlumn(cp) && cp != '_')){
+				var saved uint8
+				var j = i+1
+				for  ; util.IsAlumn(rp.code[j]) || rp.code[j] == '_'; j++ {
+
+				}
+				saved = rp.code[j]
+
+
+
+			}
+		}
+	} /* End if( rp.code ) */
+}
+
 /*
 ** Print the definition of the union used for the parser's data stack.
 ** This union contains fields for every possible data type for tokens
@@ -391,7 +424,7 @@ func print_stack_union(out *os.File, lemp *lemon, plineno *int, mhflag int) {
 
 		if sp.typ != NONTERMINAL || (len(sp.datatype) == 0 && len(lemp.vartype) == 0) {
 			sp.dtnum = 0
-			continue;
+			continue
 		}
 
 		cp := sp.datatype
@@ -885,12 +918,12 @@ func ReportTable(lemp *lemon, mhflag int) { // mhflag: Output in makeheaders for
 	rp := lemp.rule
 	for ; rp != nil; {
 		//	assert( rp.index==i );
-		fmt.Fprintf(out, " /* %3d */ \"%s ::=", i, rp.lhs.name);
+		fmt.Fprintf(out, " /* %3d */ \"%s ::=", i, rp.lhs.name)
 		for j = 0; j < rp.nrhs; j++ {
 			fmt.Fprintf(out, " %s", rp.rhs[j].name)
 		}
 		fmt.Fprintf(out, "\",\n")
-		lineno++;
+		lineno++
 		rp = rp.next
 		i++
 	}
@@ -901,49 +934,93 @@ func ReportTable(lemp *lemon, mhflag int) { // mhflag: Output in makeheaders for
 	// (In other words, generate the %destructor actions)
 	if len(lemp.tokendest) > 0 {
 		for i = 0; i < lemp.nsymbol; i++ {
-			sp := lemp.symbols[i];
+			sp := lemp.symbols[i]
 			if sp == nil || sp.typ != TERMINAL {
 
 				continue
 			}
-			fmt.Fprintf(out, "    case %d:\n", sp.index);
-			lineno++;
+			fmt.Fprintf(out, "    case %d:\n", sp.index)
+			lineno++
 		}
-		for i = 0; i < lemp.nsymbol && lemp.symbols[i].typ!=TERMINAL; i++);
+		for i = 0; i < lemp.nsymbol && lemp.symbols[i].typ != TERMINAL; i++ {
+		}
 		if i < lemp.nsymbol {
-			emit_destructor_code(out, lemp.symbols[i], lemp, &lineno);
-			fprintf(out, "      break;\n");
-			lineno++;
+			emit_destructor_code(out, lemp.symbols[i], lemp, &lineno)
+			fmt.Fprintf(out, "      break;\n")
+			lineno ++
 		}
 	}
 	for i = 0; i < lemp.nsymbol; i++ {
-		struct symbol *sp = lemp.symbols[i];
-			if sp==0 || sp.type==TERMINAL || sp.destructor==0 ) continue;
-			fprintf(out, "    case %d:\n", sp.index);
-			lineno++;
-			emit_destructor_code(out, lemp.symbols[i], lemp, &lineno);
-			fprintf(out, "      break;\n");
-			lineno++;
+		sp := lemp.symbols[i]
+		if sp == nil || sp.typ == TERMINAL || len(sp.destructor) == 0 {
+			continue
 		}
-		if lemp.vardest {
-			struct symbol *dflt_sp = 0;
-				for i = 0;
-				i<lemp.nsymbol;
-				i++ {
-			struct symbol *sp = lemp.symbols[i];
-				if sp==0 || sp.type==TERMINAL ||
-				sp.index<=0 || sp.destructor!=0 ) continue;
-				fprintf(out, "    case %d:\n", sp.index);
-				lineno++;
-				dflt_sp = sp;
+		fmt.Fprintf(out, "    case %d:\n", sp.index)
+		lineno ++
+		emit_destructor_code(out, lemp.symbols[i], lemp, &lineno)
+		fmt.Fprintf(out, "      break;\n")
+		lineno++
+	}
+	if len(lemp.vardest) > 0 {
+		var dflt_sp *symbol
+		for i = 0; i < lemp.nsymbol; i++ {
+			sp := lemp.symbols[i];
+			if sp == nil || sp.typ == TERMINAL || sp.index <= 0 || len(sp.destructor) != 0 {
+				continue
 			}
-				if dflt_sp!=0  {
-				emit_destructor_code(out, dflt_sp, lemp, &lineno);
-				fprintf(out, "      break;\n");
-				lineno++;
-			}
-			}
-			tplt_xfer(lemp.name, in, out, &lineno);
+			fmt.Fprintf(out, "    case %d:\n", sp.index)
+			lineno++
+			dflt_sp = sp
 		}
+		if dflt_sp != nil {
+			emit_destructor_code(out, dflt_sp, lemp, &lineno)
+			fmt.Fprintf(out, "      break;\n")
+			lineno ++
+		}
+	}
+	tplt_xfer(lemp.name, in, out, &lineno)
 
-		const NO_OFFSET = -2147483647
+	//Generate code which executes whenever the parser stack overflows
+	tplt_print(out, lemp, lemp.overflow, lemp.overflowln, &lineno)
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Generate the table of rule information
+	// Note: This code depends on the fact that rules are number
+	// sequentially beginning with 0.
+	for rp = lemp.rule; rp != nil; rp = rp.next {
+		fmt.Fprintf(out, "  { %d, %d },\n", rp.lhs.index, rp.nrhs)
+		lineno++
+	}
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Generate code which execution during each REDUCE action
+
+	for rp = lemp.rule; rp != nil; rp = rp.next {
+		fmt.Fprintf(out, "      case %d:\n", rp.index)
+		lineno++
+		emit_code(out, rp, lemp, &lineno)
+		fmt.Fprintf(out, "        break;\n")
+		lineno++
+	}
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Generate code which executes if a parse fails
+	tplt_print(out, lemp, lemp.failure, lemp.failureln, &lineno)
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Generate code which executes when a syntax error occurs
+	tplt_print(out, lemp, lemp.error, lemp.errorln, &lineno)
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Generate code which executes when the parser accepts its input
+	tplt_print(out, lemp, lemp.accept, lemp.acceptln, &lineno)
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Append any addition code the user desires
+	tplt_print(out, lemp, lemp.extracode, lemp.extracodeln, &lineno)
+
+	in.Close()
+	out.Close()
+}
+
+const NO_OFFSET = -2147483647

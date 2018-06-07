@@ -109,8 +109,6 @@ func main() {
 	FindStates(&lem)
 	lem.sorted = State_arrayof()
 
-	//-------------------OK tag-------------------------------//
-
 	// Tie up loose ends on the propagation links
 	FindLinks(&lem)
 
@@ -148,9 +146,12 @@ func main() {
 		ReportOutput(&lem)
 	}
 
-
+	//-------------------OK tag-------------------------------//
 	// Generate the source code for the parser
-	// ReportTable(&lem, *mhflag);
+	 ReportTable(&lem, *mhflag);
+
+
+
 
 }
 

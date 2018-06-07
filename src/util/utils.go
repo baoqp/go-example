@@ -15,6 +15,7 @@ import (
 	"hash/crc32"
 	"fmt"
 	"sync"
+	"unicode"
 )
 
 func Rand(up int) int {
@@ -68,6 +69,10 @@ func IsUpper(str string) bool {
 
 func IsLower(str string) bool {
 	return str == strings.ToLower(str) && str != strings.ToUpper(str)
+}
+
+func IsSpace(c byte) bool {
+	return unicode.IsSpace(rune(c))
 }
 
 func IsAlumn(c byte) bool {

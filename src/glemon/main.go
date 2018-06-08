@@ -148,11 +148,7 @@ func main() {
 
 	//-------------------OK tag-------------------------------//
 	// Generate the source code for the parser
-	 ReportTable(&lem, *mhflag);
-
-
-
-
+	 ReportTable(&lem, 1)
 }
 
 // print config and fws

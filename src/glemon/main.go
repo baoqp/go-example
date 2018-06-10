@@ -43,7 +43,7 @@ func main() {
 
 	args := os.Args[1:]
 	filename := args[len(args)-1] // 要处理的文件
-	filename = "C:\\personal\\lemon\\ex1.y"
+	filename = "C:\\code\\lemon\\ex1.y"
 	if ISOPT(filename) {
 		fmt.Println("no file present")
 		os.Exit(1)

@@ -9,6 +9,7 @@ import (
 	"io"
 
 	"strconv"
+	"sort"
 )
 
 /*
@@ -188,7 +189,6 @@ func ReportHeader(lemp *lemon) {
 // it the default.  Only default a reduce if there are more than one.
 // 把每个状态最频繁出现的归约动作作为该状态的默认（default）动作
 func CompressTables(lemp *lemon) {
-	fmt.Println("---compress table---")
 	var stp *state
 	var ap, ap2 *action
 	var rp, rp2, rbest *rule
@@ -271,7 +271,6 @@ func compute_action(lemp *lemon, ap *action) int {
 		act = lemp.nstate + lemp.nrule + 1
 	default:
 		act = -1
-
 	}
 	return act
 }
@@ -281,12 +280,20 @@ func compute_action(lemp *lemon, ap *action) int {
 // is changed to begin with name instead.
 // 从模板文件中把内容转移到要生成的语法分析器文件中，直到遇到以%%开头的行。参数name由语法定义文件中的%name指定
 var buff *bufio.Reader
+
 func tplt_xfer(name string, in *os.File, out *os.File, lineno *int) {
 	if buff == nil {
-		buff  = bufio.NewReader(in) //读入缓存
+		buff = bufio.NewReader(in) //读入缓存
 	}
 	for {
 		line, err := buff.ReadString('\n') // 以'\n'为结束符读入一行
+		line = strings.Replace(line, "ARG_SDECL", ARG_SDECL, -1)
+		line = strings.Replace(line, "ARG_PDECL", ARG_PDECL, -1)
+		line = strings.Replace(line, "ARG_FETCH", ARG_FETCH, -1)
+		line = strings.Replace(line, "ARG_STORE", ARG_STORE, -1)
+		line = strings.Replace(line, "YYERRSYMDT", YYERRSYMDT, -1)
+
+
 		if err != nil || io.EOF == err || (line[0] == '%' && line[1] == '%') {
 			break
 		}
@@ -365,33 +372,33 @@ func emit_destructor_code(out *os.File, sp *symbol, lemp *lemon, lineno *int) {
 
 // Generate code which executes when the rule "rp" is reduced.  Write
 // the code to "out".  Make sure lineno stays up-to-date.
+// 把产生式动作代码中的符号进行转化和展开，使之成为在语法分析栈中的各相关元素
 func emit_code(out *os.File, rp *rule, lemp *lemon, lineno *int) {
-	var cp byte
 	var lhsused bool
 	var linecnt int
-	var used []bool = make([]bool, MAXRHS, MAXRHS)
+	var used = make([]bool, MAXRHS, MAXRHS)
 
 	if len(rp.code) > 0 {
-		fmt.Fprintf(out, "#line %d \"%s\"\n{", rp.line, lemp.filename)
+		fmt.Fprintf(out, "    //#line %d \"%s\"\n        ", rp.line, lemp.filename)
 		codes := []byte(rp.code)
 
-		for i := 0; i < len(codes); i++ {
-			cp = codes[i]
-			if util.IsAlphaChar(cp) &&
-				(i == 0 || (!util.IsAlumn(cp) && cp != '_')) {
+		for i := 0; i < len(codes); i++ { // 第一个字符是 "{"，忽略
+
+			if util.IsAlphaChar(codes[i]) &&
+				(i == 0 || (!util.IsAlumn(codes[i-1]) && codes[i-1] != '_')) {
 
 				var j = i + 1
 				for ; util.IsAlumn(rp.code[j]) || rp.code[j] == '_'; j++ {
 				}
-
+				// 如果和产生式左边的别名相同，则把这个变量翻译为语法分析栈中的元素位置的信息
 				if len(rp.lhsalias) > 0 && rp.code[i:j] == rp.lhsalias {
-					fmt.Fprintf(out, "yygotominor.yy%d", rp.lhs.dtnum);
+					fmt.Fprintf(out, "yygotominor.yy%d", rp.lhs.dtnum)
 					i = j
 					lhsused = true
 				} else {
 					for h := 0; h < rp.nrhs; h++ {
 						if len(rp.rhsalias[h]) > 0 && rp.code[i:j] == rp.rhsalias[h] {
-							fmt.Fprintf(out, "yymsp[%d].minor.yy%d", h-rp.nrhs+1, rp.rhs[h].dtnum);
+							fmt.Fprintf(out, "yypParser.yystack[yypParser.yyidx-%d].minor.yy%d", h-rp.nrhs+1, rp.rhs[h].dtnum)
 							i = j
 							used[h] = true
 							break
@@ -400,16 +407,15 @@ func emit_code(out *os.File, rp *rule, lemp *lemon, lineno *int) {
 				}
 			}
 
-			if cp == '\n' {
+			if codes[i] == '\n' {
 				linecnt ++
 			}
-			fmt.Fprintf(out, "%s", cp)
+			fmt.Fprintf(out, "%c", codes[i])
 		}
-		(*lineno) += 3 + linecnt
+		*lineno += 3 + linecnt
 	} /* End if( rp.code ) */
 
 	// Check to make sure the LHS has been used
-
 	if len(rp.lhsalias) > 0 && !lhsused {
 		ErrorMsg(lemp.filename, rp.ruleline,
 			"Label \"%s\" for \"%s(%s)\" is never used.",
@@ -426,26 +432,33 @@ func emit_code(out *os.File, rp *rule, lemp *lemon, lineno *int) {
 				rp.rhsalias[i], rp.rhs[i].name, rp.rhsalias[i])
 			lemp.errorcnt++
 		} else if len(rp.rhsalias[i]) == 0 {
+			/*
 			if has_destructor(rp.rhs[i], lemp) {
-				fmt.Fprintf(out, "  yy_destructor(%d,&yymsp[%d].minor);\n",
+				fmt.Fprintf(out, "  yy_destructor(%d, &yymsp[%d].minor); \n",
 					rp.rhs[i].index, i-rp.nrhs+1)
-				(*lineno)++
+				*lineno ++
 			} else {
-				fmt.Fprintf(out, "        /* No destructor defined for %s */\n",
+				fmt.Fprintf(out, "        // No destructor defined for %s \n",
 					rp.rhs[i].name)
-				(*lineno)++
+				*lineno ++
 			}
+			*/
 		}
 	}
 
+	fmt.Fprintf(out, "\n")
+	*lineno ++
 }
 
 func has_destructor(sp *symbol, lemp *lemon) bool {
+	/*
 	if sp.typ == TERMINAL {
 		return len(lemp.tokendest) > 0
 	} else {
 		return len(lemp.vardest) > 0 || len(sp.destructor) > 0
 	}
+	*/
+	return false
 }
 
 /*
@@ -463,7 +476,7 @@ func print_stack_union(out *os.File, lemp *lemon, plineno *int, mhflag int) {
 	// Allocate and initialize types[] and allocate stddt[]
 	arraysize := lemp.nsymbol * 2
 	types := make([]string, arraysize, arraysize)
-	var stddt string         //  Standardized name for a datatype 数据类型的名称
+	var stddt string //  Standardized name for a datatype 数据类型的名称
 
 	// Build a hash table of datatypes. The ".dtnum" field of each symbol
 	// is filled in with the hash index plus 1.  A ".dtnum" value of 0 is
@@ -517,7 +530,6 @@ func print_stack_union(out *os.File, lemp *lemon, plineno *int, mhflag int) {
 		name = lemp.name
 	}
 	lineno = *plineno
-
 
 	tokenType := "interface{}"
 	if len(lemp.tokentype) > 0 {
@@ -586,12 +598,23 @@ func minimum_size_type(lwr int, upr int) string {
 type axset struct {
 	stp     *state // A pointer to a state
 	isTkn   bool   // True to use tokens.  False for non-terminals
-	nAction int    /* Number of actions */
+	nAction int    // Number of actions
 }
 
 // Compare to axset structures for sorting purposes
 func axset_compare(a *axset, b *axset) int {
-	return b.nAction - a.nAction // 根据nAction大小逆序
+	c := b.nAction - a.nAction // 根据nAction大小逆序
+	if c == 0 {
+		c = a.stp.index - b.stp.index
+	}
+	if c == 0 {
+		if a.isTkn {
+			c = -1
+		} else {
+			c = 1
+		}
+	}
+	return c
 }
 
 type SortedAxset []*axset
@@ -601,6 +624,14 @@ func (sa SortedAxset) Swap(i, j int) { sa[i], sa[j] = sa[j], sa[i] }
 func (sa SortedAxset) Less(i, j int) bool {
 	return axset_compare(sa[i], sa[j]) < 0
 }
+
+
+
+var ARG_SDECL = "" // lemp.arg声明为变量
+var ARG_PDECL = "" // lemp.arg声明为函数中的参数
+var ARG_FETCH = "" // 把yypParser的pParse属性取出
+var ARG_STORE = "" // 设置yypParser的pParse属性
+var YYERRSYMDT = ""
 
 // Generate C source code for the parser
 func ReportTable(lemp *lemon, mhflag int) { // mhflag: Output in makeheaders format if true
@@ -667,11 +698,13 @@ func ReportTable(lemp *lemon, mhflag int) { // mhflag: Output in makeheaders for
 	}
 
 	//lemp.arg = "Parse *pParse"
-	var ARG_SDECL = "" // lemp.arg声明为变量
-	var ARG_PDECL = "" // lemp.arg声明为函数中的参数
-	var ARG_FETCH = "" // 把yypParser的pParse属性取出
-	var ARG_STORE = "" // 设置yypParser的pParse属性
-	if len(lemp.arg) > 0 { // TODO ???
+	//var ARG_SDECL = "" // lemp.arg声明为变量
+	//var ARG_PDECL = "" // lemp.arg声明为函数中的参数
+	//var ARG_FETCH = "" // 把yypParser的pParse属性取出
+	//var ARG_STORE = "" // 设置yypParser的pParse属性
+
+
+	if len(lemp.arg) > 0 {
 		i := len(lemp.arg)
 		for i >= 1 && util.IsSpace(lemp.arg[i-1]) {
 			i --
@@ -691,15 +724,384 @@ func ReportTable(lemp *lemon, mhflag int) { // mhflag: Output in makeheaders for
 	fmt.Printf("ARG_FETCH: %s\n", ARG_FETCH)
 	fmt.Printf("ARG_STORE: %s\n", ARG_STORE)
 
-
 	fmt.Fprintf(out, "const YYNSTATE = %d\n", lemp.nstate)
 	lineno++
 	fmt.Fprintf(out, "const YYNRULE = %d\n", lemp.nrule)
-	lineno++;
+	lineno++
 	fmt.Fprintf(out, "const YYERRORSYMBOL = %d\n", lemp.errsym.index)
 	lineno++
-	fmt.Fprintf(out, "const YYERRSYMDT = yy%d\n", lemp.errsym.dtnum)
+	YYERRSYMDT = fmt.Sprintf( "yy%d", lemp.errsym.dtnum) // TODO
 	lineno++
+
+	if lemp.has_fallback {
+		fmt.Fprintf(out, "const YYFALLBACK = 1\n")
+		lineno ++
+	}
+
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Compute the actions on all states and count them up
+	ax := make([]*axset, 2*lemp.nstate, 2*lemp.nstate)
+
+	for i := 0; i < lemp.nstate; i++ {
+		stp := lemp.sorted[i]
+		stp.nTknAct = 0
+		stp.nNtAct = 0
+		stp.iDflt = lemp.nstate + lemp.nrule
+		// iTknOfst,iNtOfst是终结符或非终结符在yy_action[]中的偏移量
+		stp.iTknOfst = NO_OFFSET
+		stp.iNtOfst = NO_OFFSET
+		for ap := stp.ap; ap != nil; ap = ap.next {
+			if compute_action(lemp, ap) >= 0 {
+				if ap.sp.index < lemp.nterminal {
+					stp.nTknAct ++
+				} else if ap.sp.index < lemp.nsymbol {
+					stp.nNtAct ++
+				} else {
+					stp.iDflt = compute_action(lemp, ap) // iDflt存放的是{default}符号
+				}
+			}
+		}
+		ax[i*2] = &axset{}
+		ax[i*2].stp = stp
+		ax[i*2].isTkn = true
+		ax[i*2].nAction = stp.nTknAct
+		ax[i*2+1] = &axset{}
+		ax[i*2+1].stp = stp
+		ax[i*2+1].isTkn = false
+		ax[i*2+1].nAction = stp.nNtAct
+	}
+	// 通过这个循环，根据终结符或非终结符把每个状态下的动作分为相应的两部分保存到ax数组中
+
+	var mxTknOfst, mnTknOfst = 0, 0
+	var mxNtOfst, mnNtOfst = 0, 0
+	// Compute the action table.  In order to try to keep the size of the
+	// action table to a minimum, the heuristic of placing the largest action
+	// sets first is used.
+	sort.Sort(SortedAxset(ax))
+
+	/*for i := 0; i < lemp.nstate*2; i++ {
+		fmt.Printf("%d %v %d\n", ax[i].stp.index, ax[i].isTkn, ax[i].nAction)
+	}*/
+
+	pActtab := acttab_alloc()
+	for i := 0; i < lemp.nstate*2 && ax[i].nAction > 0; i++ {
+		stp := ax[i].stp
+		if ax[i].isTkn {
+			for ap := stp.ap; ap != nil; ap = ap.next {
+				if ap.sp.index >= lemp.nterminal {
+					continue
+				}
+				action := compute_action(lemp, ap)
+				if action < 0 {
+					continue
+				}
+				acttab_action(pActtab, ap.sp.index, action)
+			}
+			// 状态起始位置与yy_action数组首部的绝对距离，也就是索引值
+			stp.iTknOfst = acttab_insert(pActtab)
+			if stp.iTknOfst < mnTknOfst {
+				mnTknOfst = stp.iTknOfst
+			}
+			if stp.iTknOfst > mxTknOfst {
+				mxTknOfst = stp.iTknOfst
+			}
+		} else {
+			for ap := stp.ap; ap != nil; ap = ap.next {
+
+				if ap.sp.index < lemp.nterminal {
+					continue
+				}
+				if ap.sp.index == lemp.nsymbol {
+					continue
+				}
+				action := compute_action(lemp, ap)
+				if action < 0 {
+					continue
+				}
+				acttab_action(pActtab, ap.sp.index, action)
+			}
+			stp.iNtOfst = acttab_insert(pActtab)
+			if stp.iNtOfst < mnNtOfst {
+				mnNtOfst = stp.iNtOfst
+			}
+			if stp.iNtOfst > mxNtOfst {
+				mxNtOfst = stp.iNtOfst
+			}
+		}
+	}
+
+	// free(ax)
+	// Output the yy_action table
+	fmt.Fprintf(out, "var yy_action  = []YYACTIONTYPE {\n")
+	lineno++
+	n := acttab_size(pActtab)
+	i, j := 0, 0
+	for ; i < n; i++ {
+		action := acttab_yyaction(pActtab, i)
+		if action < 0 {
+			action = lemp.nsymbol + lemp.nrule + 2
+		}
+		if j == 0 {
+			fmt.Fprintf(out, " /* %5d */ ", i)
+		}
+		fmt.Fprintf(out, " %4d,", action)
+		if j == 9 || i == n-1 { // 每10个元素或循环结束的时候换行
+			fmt.Fprintf(out, "\n")
+			lineno++
+			j = 0
+		} else {
+			j++
+		}
+	}
+	fmt.Fprintf(out, "}\n")
+	lineno++
+
+	//  Output the yy_lookahead table
+	fmt.Fprintf(out, "var yy_lookahead =  []YYCODETYPE {\n")
+	lineno++
+	i, j = 0, 0
+	for ; i < n; i++ {
+		la := acttab_yylookahead(pActtab, i)
+		if la < 0 {
+			la = lemp.nsymbol
+		}
+		if j == 0 {
+			fmt.Fprintf(out, " /* %5d */ ", i)
+		}
+		fmt.Fprintf(out, " %4d,", la)
+		if j == 9 || i == n-1 {
+			fmt.Fprintf(out, "\n")
+			lineno++
+			j = 0
+		} else {
+			j++
+		}
+	}
+	fmt.Fprintf(out, "} \n")
+	lineno++
+
+	// Output the yy_shift_ofst[] table
+
+	fmt.Fprintf(out, "const YY_SHIFT_USE_DFLT = %d \n", mnTknOfst-1)
+	lineno++
+	fmt.Fprintf(out, "var  yy_shift_ofst  = []%s {\n",
+		minimum_size_type(mnTknOfst-1, mxTknOfst))
+	lineno++
+	n = lemp.nstate
+	i, j = 0, 0
+	for ; i < n; i++ {
+		stp := lemp.sorted[i]
+		ofst := stp.iTknOfst
+		if ofst == NO_OFFSET {
+			ofst = mnTknOfst - 1
+		}
+		if j == 0 {
+			fmt.Fprintf(out, " /* %5d */ ", i)
+		}
+		fmt.Fprintf(out, " %4d,", ofst)
+		if j == 9 || i == n-1 {
+			fmt.Fprintf(out, "\n")
+			lineno++
+			j = 0
+		} else {
+			j++
+		}
+	}
+	fmt.Fprintf(out, "} \n")
+	lineno++
+
+	// Output the yy_reduce_ofst[] table
+	fmt.Fprintf(out, "const YY_REDUCE_USE_DFLT = %d \n", mnNtOfst-1)
+	lineno++
+	fmt.Fprintf(out, "var yy_reduce_ofst  = []%s {\n",
+		minimum_size_type(mnNtOfst-1, mxNtOfst))
+	lineno++
+	n = lemp.nstate
+	i, j = 0, 0
+	for ; i < n; i++ {
+		stp := lemp.sorted[i]
+		ofst := stp.iNtOfst
+		if ofst == NO_OFFSET {
+			ofst = mnNtOfst - 1
+		}
+		if j == 0 {
+			fmt.Fprintf(out, " /* %5d */ ", i)
+		}
+		fmt.Fprintf(out, " %4d,", ofst)
+		if j == 9 || i == n-1 {
+			fmt.Fprintf(out, "\n")
+			lineno++
+			j = 0
+		} else {
+			j++
+		}
+	}
+	fmt.Fprintf(out, "} \n")
+	lineno++
+
+	// Output the default action table
+	fmt.Fprintf(out, "var yy_default  = []YYACTIONTYPE {\n")
+	lineno++
+	n = lemp.nstate
+	i, j = 0, 0
+	for ; i < n; i++ {
+		stp := lemp.sorted[i]
+		if j == 0 {
+			fmt.Fprintf(out, " /* %5d */ ", i)
+		}
+		fmt.Fprintf(out, " %4d,", stp.iDflt)
+		if j == 9 || i == n-1 {
+			fmt.Fprintf(out, "\n")
+			lineno++
+			j = 0
+		} else {
+			j++;
+		}
+	}
+	fmt.Fprintf(out, "} \n")
+	lineno++
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// 有些符号既可以作为终结符，也可以作为标识符（ID），如果用作终结符时会出现语法错误，则会当做标识符解释
+	//Generate the table of fallback tokens.
+	if lemp.has_fallback {
+		for i = 0; i < lemp.nterminal; i++ {
+			p := lemp.symbols[i]
+			if p.fallback == nil {
+				fmt.Fprintf(out, "    0,  /* %10s => nothing */\n", p.name)
+			} else {
+				fmt.Fprintf(out, "  %3d,  /* %10s => %s */\n", p.fallback.index,
+					p.name, p.fallback.name)
+			}
+			lineno++
+		}
+	}
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Generate a table containing the symbolic name of every symbol
+	for i = 0; i < lemp.nsymbol; i++ {
+		line := fmt.Sprintf("\"%s\",", lemp.symbols[i].name)
+		fmt.Fprintf(out, "  %-15s", line)
+		if (i & 3) == 3 {
+			fmt.Fprintf(out, "\n")
+			lineno++;
+		}
+	}
+	if (i & 3) != 0 {
+		fmt.Fprintf(out, "\n")
+		lineno++
+	}
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Generate a table containing a text string that describes every
+	// rule in the rule set of the grammer.  This information is used
+	// when tracing REDUCE actions.
+	i = 0
+	rp := lemp.rule
+	for ; rp != nil; {
+		//	assert( rp.index==i );
+		fmt.Fprintf(out, " /* %3d */ \"%s ::=", i, rp.lhs.name)
+		for j = 0; j < rp.nrhs; j++ {
+			fmt.Fprintf(out, " %s", rp.rhs[j].name)
+		}
+		fmt.Fprintf(out, "\",\n")
+		lineno++
+		rp = rp.next
+		i++
+	}
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	/*
+		// 不支持token的销毁处理
+		// Generate code which executes every time a symbol is popped from
+		// the stack while processing errors or while destroying the parser.
+		// (In other words, generate the %destructor actions)
+		if len(lemp.tokendest) > 0 {
+			for i = 0; i < lemp.nsymbol; i++ {
+				sp := lemp.symbols[i]
+				if sp == nil || sp.typ != TERMINAL {
+
+					continue
+				}
+				fmt.Fprintf(out, "    case %d:\n", sp.index)
+				lineno++
+			}
+			for i = 0; i < lemp.nsymbol && lemp.symbols[i].typ != TERMINAL; i++ {
+			}
+			if i < lemp.nsymbol {
+				emit_destructor_code(out, lemp.symbols[i], lemp, &lineno)
+				fmt.Fprintf(out, "      break;\n")
+				lineno ++
+			}
+		}
+		for i = 0; i < lemp.nsymbol; i++ {
+			sp := lemp.symbols[i]
+			if sp == nil || sp.typ == TERMINAL || len(sp.destructor) == 0 {
+				continue
+			}
+			fmt.Fprintf(out, "    case %d:\n", sp.index)
+			lineno ++
+			emit_destructor_code(out, lemp.symbols[i], lemp, &lineno)
+			fmt.Fprintf(out, "      break;\n")
+			lineno++
+		}
+		if len(lemp.vardest) > 0 {
+			var dflt_sp *symbol
+			for i = 0; i < lemp.nsymbol; i++ {
+				sp := lemp.symbols[i];
+				if sp == nil || sp.typ == TERMINAL || sp.index <= 0 || len(sp.destructor) != 0 {
+					continue
+				}
+				fmt.Fprintf(out, "    case %d:\n", sp.index)
+				lineno++
+				dflt_sp = sp
+			}
+			if dflt_sp != nil {
+				emit_destructor_code(out, dflt_sp, lemp, &lineno)
+				fmt.Fprintf(out, "      break;\n")
+				lineno ++
+			}
+		}
+		tplt_xfer(lemp.name, in, out, &lineno)
+	*/
+
+	//Generate code which executes whenever the parser stack overflows
+	tplt_print(out, lemp, lemp.overflow, lemp.overflowln, &lineno)
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Generate the table of rule information
+	// Note: This code depends on the fact that rules are number
+	// sequentially beginning with 0.
+	for rp = lemp.rule; rp != nil; rp = rp.next {
+		fmt.Fprintf(out, "  { %d, %d },\n", rp.lhs.index, rp.nrhs)
+		lineno++
+	}
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Generate code which execution during each REDUCE action
+	for rp = lemp.rule; rp != nil; rp = rp.next {
+		fmt.Fprintf(out, "    case %d:\n", rp.index)
+		lineno++
+		emit_code(out, rp, lemp, &lineno)
+		lineno++
+	}
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Generate code which executes if a parse fails
+	tplt_print(out, lemp, lemp.failure, lemp.failureln, &lineno)
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Generate code which executes when a syntax error occurs
+	tplt_print(out, lemp, lemp.error, lemp.errorln, &lineno)
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Generate code which executes when the parser accepts its input
+	tplt_print(out, lemp, lemp.accept, lemp.acceptln, &lineno)
+	tplt_xfer(lemp.name, in, out, &lineno)
+
+	// Append any addition code the user desires
+	tplt_print(out, lemp, lemp.extracode, lemp.extracodeln, &lineno)
 
 	in.Close()
 	out.Close()
